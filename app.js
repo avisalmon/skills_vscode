@@ -14,6 +14,11 @@ const CATEGORY_COLORS = {
   'Hardware':      { bg: '#fee2e2', text: '#991b1b', border: '#fecaca' },
   'Productivity':  { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa' },
   'AI / ML':       { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' },
+  'CAD / Mechanical': { bg: '#ecfeff', text: '#0e7490', border: '#a5f3fc' },
+  'Robotics':      { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+  'Finance / Data': { bg: '#fefce8', text: '#a16207', border: '#fde68a' },
+  'Free API':      { bg: '#eef2ff', text: '#3730a3', border: '#c7d2fe' },
+  'API':           { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' },
 };
 
 const DEFAULT_COLOR = { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0' };
@@ -206,6 +211,33 @@ async function downloadSkill(skillId) {
   }
 }
 
+async function downloadAllSkills() {
+  const skills = window.SKILLS_DATA || [];
+  if (!skills.length) return;
+
+  try {
+    const zip = new JSZip();
+
+    skills.forEach(skill => {
+      const folder = zip.folder(skill.id);
+      folder.file('SKILL.md', skill.content);
+    });
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'vscode-skills-all.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Download all failed:', err);
+    alert('Download failed. Please try again.');
+  }
+}
+
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function escapeHTML(str) {
   return String(str)
@@ -232,6 +264,7 @@ function init() {
   // ── Search + filter ──
   $('#search-input').addEventListener('input', filterSkills);
   $('#category-filter').addEventListener('change', filterSkills);
+  $('#download-all-btn').addEventListener('click', downloadAllSkills);
 
   // ── Card actions (event delegation) ──
   $('#skills-grid').addEventListener('click', e => {

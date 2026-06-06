@@ -64,6 +64,7 @@
         <select id="category-filter" class="cat-select" aria-label="Filter by category">
           <option value="">All categories</option>
         </select>
+        <button type="button" id="download-all-btn" class="btn btn-primary">Download All Skills</button>
         <span id="result-count" class="result-count" aria-live="polite"></span>
       </div>
 
@@ -162,7 +163,7 @@
 
           <div class="code-block-wrap">
             <div class="code-block-label">Windows</div>
-            <pre class="code-block-pre"><code>C:\Users\YourName\.copilot\skills\
+            <pre class="code-block-pre"><code>%USERPROFILE%\.copilot\skills\
 ├── docker-basics\
 │   └── SKILL.md
 └── pandas-data-analysis\
