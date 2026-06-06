@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NASA Astronomy Picture of the Day</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, Arial, sans-serif;
+      background: #0b1020;
+      color: #f8fafc;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    input,
+    button {
+      height: 38px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      font: inherit;
+    }
+
+    input {
+      padding: 0 10px;
+      background: #111827;
+      color: #f8fafc;
+    }
+
+    button {
+      padding: 0 14px;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .status {
+      color: #cbd5e1;
+      margin: 14px 0;
+      min-height: 24px;
+    }
+
+    .media {
+      width: 100%;
+      max-height: 68vh;
+      object-fit: contain;
+      background: #020617;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+    }
+
+    iframe.media {
+      height: 520px;
+    }
+
+    .meta {
+      margin-top: 18px;
+    }
+
+    .date {
+      color: #93c5fd;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .explanation {
+      line-height: 1.65;
+      color: #dbeafe;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>NASA Astronomy Picture of the Day</h1>
+      </div>
+
+      <div class="controls">
+        <input id="dateInput" type="date" />
+        <button id="loadBtn">Load</button>
+      </div>
+    </header>
+
+    <div id="status" class="status">Loading...</div>
+    <div id="mediaWrap"></div>
+
+    <section class="meta">
+      <div id="date" class="date"></div>
+      <div id="title" class="title"></div>
+      <div id="explanation" class="explanation"></div>
+    </section>
+  </main>
+
+  <script>
+    const API_KEY = 'DEMO_KEY';
+    const FALLBACK_APOD = {
+      date: '2026-06-06',
+      title: 'Charon: Moon of Pluto',
+      media_type: 'image',
+      url: 'https://apod.nasa.gov/apod/image/2606/charon_then_now_1024.jpg',
+      explanation: "A darkened and mysterious north polar region known to some as Mordor Macula caps this premier view of Charon, Pluto's largest moon. The high-resolution image was captured by the interplanetary space probe New Horizons near its closest approach to distant Pluto on July 14, 2015."
+    };
+
+    const statusEl = document.querySelector('#status');
+    const mediaWrap = document.querySelector('#mediaWrap');
+    const dateEl = document.querySelector('#date');
+    const titleEl = document.querySelector('#title');
+    const explanationEl = document.querySelector('#explanation');
+    const dateInput = document.querySelector('#dateInput');
+    const loadBtn = document.querySelector('#loadBtn');
+
+    async function loadApod(date = '') {
+      statusEl.textContent = 'Loading...';
+      mediaWrap.innerHTML = '';
+      dateEl.textContent = '';
+      titleEl.textContent = '';
+      explanationEl.textContent = '';
+
+      const params = new URLSearchParams({ api_key: API_KEY });
+      if (date) params.set('date', date);
+
+      try {
+        const response = await fetch(`https://api.nasa.gov/planetary/apod?${params}`);
+        if (!response.ok) {
+          throw new Error(`NASA API returned HTTP ${response.status}`);
+        }
+
+        renderApod(await response.json());
+      } catch (error) {
+        statusEl.textContent = `Live APOD failed (${error.message}). Showing cached demo data.`;
+        renderApod(FALLBACK_APOD);
+      }
+    }
+
+    function renderApod(data) {
+      dateEl.textContent = data.date || '';
+      titleEl.textContent = data.title || 'Untitled';
+      explanationEl.textContent = data.explanation || '';
+
+      if (data.media_type === 'image') {
+        const img = document.createElement('img');
+        img.className = 'media';
+        img.src = data.url;
+        img.alt = data.title || 'NASA Astronomy Picture of the Day';
+        mediaWrap.appendChild(img);
+      } else if (data.media_type === 'video') {
+        const frame = document.createElement('iframe');
+        frame.className = 'media';
+        frame.src = data.url;
+        frame.title = data.title || 'NASA video';
+        frame.allowFullscreen = true;
+        mediaWrap.appendChild(frame);
+      } else {
+        mediaWrap.innerHTML = `<p>Unsupported media type: ${data.media_type}</p>`;
+      }
+    }
+
+    loadBtn.addEventListener('click', () => {
+      loadApod(dateInput.value);
+    });
+
+    loadApod();
+  </script>
+</body>
+</html>
