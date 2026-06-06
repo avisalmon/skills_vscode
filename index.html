@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VS Code Skills Store</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Navigation ──────────────────────────────────────────────────────── -->
+  <nav class="navbar">
+    <div class="nav-inner">
+      <div class="nav-brand">
+        <span class="brand-emoji" aria-hidden="true">⚡</span>
+        <span class="brand-text"><strong>Skills</strong> <span class="brand-for">for VS Code</span></span>
+      </div>
+      <div class="nav-links">
+        <button class="nav-btn active" data-page="store">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
+            <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v2A1.5 1.5 0 0 0 1.5 7h13A1.5 1.5 0 0 0 16 5.5v-2A1.5 1.5 0 0 0 14.5 2zM0 9.5A1.5 1.5 0 0 1 1.5 8h13A1.5 1.5 0 0 1 16 9.5v2A1.5 1.5 0 0 1 14.5 13h-13A1.5 1.5 0 0 1 0 11.5z"/>
+          </svg>
+          Store
+        </button>
+        <button class="nav-btn" data-page="guide">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
+            <path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Z"/>
+          </svg>
+          Guide
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       STORE PAGE
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-store" class="page">
+
+    <div class="hero">
+      <div class="hero-inner">
+        <div class="hero-badge">⚡ For students &amp; developers</div>
+        <h1 class="hero-title">Find the right skill<br>for every task</h1>
+        <p class="hero-desc">
+          Download GitHub Copilot skill packs. Drop them in your
+          <code>.copilot/skills/</code> folder and get instant domain expertise.
+        </p>
+      </div>
+    </div>
+
+    <div class="store-body">
+      <div class="controls-bar">
+        <label class="search-box" for="search-input">
+          <svg class="search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <circle cx="6.5" cy="6.5" r="4.5"/>
+            <path d="m10.5 10.5 3.5 3.5" stroke-linecap="round"/>
+          </svg>
+          <input type="text" id="search-input" placeholder="Search skills…" autocomplete="off" spellcheck="false">
+        </label>
+        <select id="category-filter" class="cat-select" aria-label="Filter by category">
+          <option value="">All categories</option>
+        </select>
+        <span id="result-count" class="result-count" aria-live="polite"></span>
+      </div>
+
+      <div id="skills-grid" class="skills-grid" role="list"></div>
+
+      <div id="empty-state" class="empty-state hidden" role="status">
+        <div class="empty-emoji">🔍</div>
+        <p class="empty-title">No skills found</p>
+        <p class="empty-sub">Try adjusting your search or changing the category filter.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       GUIDE PAGE
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-guide" class="page hidden">
+    <div class="guide-wrap">
+
+      <!-- Sidebar -->
+      <aside class="guide-sidebar">
+        <p class="sidebar-heading">On this page</p>
+        <nav class="sidebar-nav" aria-label="Guide sections">
+          <a href="#what-is-skill"    class="sidebar-link">What is a Skill?</a>
+          <a href="#how-it-works"     class="sidebar-link">How It Works</a>
+          <a href="#where-to-install" class="sidebar-link">Where to Install</a>
+          <a href="#skill-structure"  class="sidebar-link">File Structure</a>
+          <a href="#write-good-skill" class="sidebar-link">Writing a Good Skill</a>
+          <a href="#dos-donts"        class="sidebar-link">Do's &amp; Don'ts</a>
+        </nav>
+      </aside>
+
+      <!-- Article -->
+      <article class="guide-article">
+
+        <div class="guide-hero">
+          <div class="guide-hero-badge">📖 Documentation</div>
+          <h1>VS Code Skills Guide</h1>
+          <p class="guide-hero-desc">Everything you need to know about Copilot skills: what they are, how to install them, and how to write great ones.</p>
+        </div>
+
+        <!-- ── What is a Skill ─────────────────────────────────── -->
+        <section id="what-is-skill" class="guide-section">
+          <h2>What is a VS Code Skill?</h2>
+          <p>A <strong>VS Code Skill</strong> is a Markdown file that teaches GitHub Copilot how to behave in a specific domain. Instead of re-explaining your stack every conversation, you write the instructions once, store them in a structured file, and Copilot picks them up automatically.</p>
+
+          <div class="callout callout-blue">
+            <div class="callout-icon">💡</div>
+            <div class="callout-body">Think of it as a <strong>cheat sheet for Copilot</strong> — it knows your tools, patterns, and conventions, so you never have to repeat yourself.</div>
+          </div>
+
+          <p>Skills are especially powerful for:</p>
+          <ul>
+            <li>Teaching students a <strong>consistent workflow</strong> across a course</li>
+            <li>Encoding team <strong>coding standards</strong> and conventions into Copilot</li>
+            <li>Domain-specific tooling: Docker, pandas, hardware, cloud, etc.</li>
+            <li>Saving time on repetitive explanations in every chat session</li>
+          </ul>
+        </section>
+
+        <!-- ── How It Works ───────────────────────────────────── -->
+        <section id="how-it-works" class="guide-section">
+          <h2>How It Works</h2>
+          <p>When you open a chat with GitHub Copilot, the extension scans your configured skill folders. Each skill has a <strong>description</strong> — Copilot uses this to decide whether the skill is relevant to your current request.</p>
+          <p>If you type <em>"help me containerize this app"</em> and you have a <code>docker-basics</code> skill installed, Copilot automatically reads that skill and gives you expert Docker guidance — without you having to ask.</p>
+
+          <div class="flow">
+            <div class="flow-item">
+              <div class="flow-num">1</div>
+              <div class="flow-label">You ask Copilot a question</div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">→</div>
+            <div class="flow-item">
+              <div class="flow-num">2</div>
+              <div class="flow-label">Copilot reads skill descriptions</div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">→</div>
+            <div class="flow-item">
+              <div class="flow-num">3</div>
+              <div class="flow-label">Matching skill injected into context</div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">→</div>
+            <div class="flow-item">
+              <div class="flow-num">4</div>
+              <div class="flow-label">Expert-level, specific answer</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Where to Install ───────────────────────────────── -->
+        <section id="where-to-install" class="guide-section">
+          <h2>Where to Install Skills</h2>
+          <p>Skills live as folders each containing a <code>SKILL.md</code> file. You can install them <strong>globally</strong> (available in all projects) or <strong>per repository</strong> (shared with your team).</p>
+
+          <h3>Global Installation — available in every project</h3>
+
+          <div class="code-block-wrap">
+            <div class="code-block-label">Windows</div>
+            <pre class="code-block-pre"><code>C:\Users\YourName\.copilot\skills\
+├── docker-basics\
+│   └── SKILL.md
+└── pandas-data-analysis\
+    └── SKILL.md</code></pre>
+          </div>
+
+          <div class="code-block-wrap">
+            <div class="code-block-label">macOS / Linux</div>
+            <pre class="code-block-pre"><code>~/.copilot/skills/
+├── docker-basics/
+│   └── SKILL.md
+└── pandas-data-analysis/
+    └── SKILL.md</code></pre>
+          </div>
+
+          <h3>Repository-Level Installation — shared with your team</h3>
+          <p>Place skills inside your project so anyone who clones the repo benefits from them automatically:</p>
+
+          <div class="code-block-wrap">
+            <div class="code-block-label">Project root</div>
+            <pre class="code-block-pre"><code>my-project/
+└── .copilot/
+    └── skills/
+        ├── docker-basics/
+        │   └── SKILL.md
+        └── pandas-data-analysis/
+            └── SKILL.md</code></pre>
+          </div>
+
+          <div class="callout callout-green">
+            <div class="callout-icon">📦</div>
+            <div class="callout-body"><strong>Installing from this store:</strong> Click "Download ZIP" on any skill card, extract the ZIP, and drop the folder into your skills directory. That's it — Copilot picks it up on the next chat session.</div>
+          </div>
+        </section>
+
+        <!-- ── Skill File Structure ───────────────────────────── -->
+        <section id="skill-structure" class="guide-section">
+          <h2>Skill File Structure</h2>
+          <p>A <code>SKILL.md</code> file has two parts: optional <strong>YAML frontmatter</strong> (between <code>---</code> lines) and the <strong>instruction body</strong>.</p>
+
+          <div class="code-block-wrap">
+            <div class="code-block-label">SKILL.md template</div>
+            <pre class="code-block-pre"><code>---
+name: My Skill
+description: What this skill does. Include trigger keywords here.
+             Example: TRIGGER: docker, container, dockerfile.
+version: 1.0.0
+category: DevOps
+tags: [docker, containers, devops]
+---
+
+# My Skill
+
+## Overview
+What this skill enables Copilot to do.
+
+**Trigger words:** "keyword1", "keyword2", "keyword3"
+
+---
+
+## 1. Common Task Name
+
+```python
+# Concrete, copy-paste-ready code example
+```
+
+## Best Practices
+- Be specific, not abstract
+- Use real working code, not pseudocode
+- List common pitfalls and warnings</code></pre>
+          </div>
+
+          <h3>Frontmatter fields</h3>
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Required</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>name</code></td>
+                <td>Yes</td>
+                <td>Human-readable display name</td>
+              </tr>
+              <tr>
+                <td><code>description</code></td>
+                <td>Yes</td>
+                <td>Used by Copilot to determine relevance. <strong>Include trigger keywords here.</strong></td>
+              </tr>
+              <tr>
+                <td><code>version</code></td>
+                <td>Recommended</td>
+                <td>Semantic version string, e.g. <code>1.0.0</code></td>
+              </tr>
+              <tr>
+                <td><code>category</code></td>
+                <td>No</td>
+                <td>DevOps, Data Science, Frontend, Backend, etc.</td>
+              </tr>
+              <tr>
+                <td><code>tags</code></td>
+                <td>No</td>
+                <td>Array of keywords for store search &amp; discovery</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ── Writing a Good Skill ───────────────────────────── -->
+        <section id="write-good-skill" class="guide-section">
+          <h2>Writing a Good Skill</h2>
+
+          <h3>1. Write a precise description</h3>
+          <p>The description is what Copilot reads to decide if your skill is relevant. It must be <strong>specific and keyword-rich</strong>.</p>
+
+          <div class="comparison-wrap">
+            <div class="comparison-bad">
+              <div class="comparison-label">❌ Too vague — won't trigger</div>
+              <code class="comparison-code">"Helps with Python coding tasks and data work."</code>
+            </div>
+            <div class="comparison-good">
+              <div class="comparison-label">✅ Specific with triggers</div>
+              <code class="comparison-code">"Analyze tabular data with pandas: read CSV/Excel, filter rows, groupby aggregate, merge DataFrames, plot charts. TRIGGER: pandas, dataframe, read csv, groupby, pivot table."</code>
+            </div>
+          </div>
+
+          <h3>2. List trigger words explicitly</h3>
+          <p>In the very first paragraph of your skill body, list the exact words that should activate this skill:</p>
+
+          <div class="code-block-wrap">
+            <pre class="code-block-pre"><code>**Trigger words:** "docker", "container", "dockerfile", "docker-compose", "docker run"</code></pre>
+          </div>
+
+          <h3>3. Use copy-paste-ready code</h3>
+          <p>Don't describe what code should look like — show actual, <strong>runnable examples</strong>. Copilot learns patterns from examples, not prose.</p>
+
+          <h3>4. Cover the 80% use cases</h3>
+          <p>Focus on what your students hit most often. A skill with 5 excellent examples beats one with 20 mediocre ones. Depth over breadth.</p>
+
+          <h3>5. End with a Best Practices section</h3>
+          <p>The last section should list common pitfalls, security warnings, and conventions specific to your domain. This is what elevates a skill from good to great.</p>
+
+          <h3>6. Test it before sharing</h3>
+          <p>Install the skill, open a fresh Copilot chat, and ask a few questions using your trigger words. Make sure you get the expected, expert-level responses.</p>
+        </section>
+
+        <!-- ── Do's and Don'ts ────────────────────────────────── -->
+        <section id="dos-donts" class="guide-section">
+          <h2>Do's &amp; Don'ts</h2>
+
+          <div class="dos-donts-grid">
+            <div class="dos-box">
+              <h3>✅ Do</h3>
+              <ul>
+                <li>Use concrete, runnable code examples</li>
+                <li>List explicit trigger keywords in the description</li>
+                <li>Version your skill — start at <code>1.0.0</code></li>
+                <li>Keep each skill focused on <strong>one domain</strong></li>
+                <li>Add a "Best Practices" section at the end</li>
+                <li>Test by actually chatting with Copilot after installing</li>
+                <li>Update the description when you add new content</li>
+                <li>Use clear headings to organize task sections</li>
+              </ul>
+            </div>
+            <div class="donts-box">
+              <h3>❌ Don't</h3>
+              <ul>
+                <li>Write vague prose without concrete examples</li>
+                <li>Put every topic into one giant skill file</li>
+                <li>Include secrets, tokens, or credentials</li>
+                <li>Use skills to bypass security policies</li>
+                <li>Write instructions in first person ("I will…")</li>
+                <li>Copy entire documentation pages verbatim</li>
+                <li>Forget to test before sharing with students</li>
+                <li>Leave the description empty or vague</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+      </article>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       SKILL READER MODAL
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal" role="document">
+
+      <div class="modal-header">
+        <div class="modal-meta">
+          <span id="modal-icon" class="modal-skill-icon" aria-hidden="true"></span>
+          <div>
+            <h2 id="modal-title" class="modal-title-text"></h2>
+            <div class="modal-badges">
+              <span id="modal-category" class="category-badge"></span>
+              <span id="modal-version"  class="version-badge"></span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="modal-download-btn" class="btn btn-primary">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
+              <path d="M7.47 10.78a.75.75 0 0 0 1.06 0l3.75-3.75a.75.75 0 0 0-1.06-1.06L8.75 8.44V1.75a.75.75 0 0 0-1.5 0v6.69L4.78 5.97a.75.75 0 0 0-1.06 1.06l3.75 3.75ZM3.75 13a.75.75 0 0 0 0 1.5h8.5a.75.75 0 0 0 0-1.5h-8.5Z"/>
+            </svg>
+            Download ZIP
+          </button>
+          <button id="modal-close-btn" class="btn btn-icon" aria-label="Close skill reader">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16" aria-hidden="true">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="modal-body" class="modal-body markdown-body"></div>
+
+    </div>
+  </div>
+
+  <!-- ── Scripts ──────────────────────────────────────────────────────────── -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="skills-data.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
