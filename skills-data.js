@@ -3936,6 +3936,1067 @@ def get_client() -> OpenAI:
 - Use the smallest capable model for classroom experiments.
 - Do not store student API keys on a shared machine.
 `
+  },
+
+  // ── GitHub Public API ──
+  {
+    id:          'github-public-api',
+    name:        'GitHub Public API',
+    description: 'Use GitHub\'s public REST API for classroom projects: search repositories, read issues, inspect commits, list contributors, understand pagination, rate limits, User-Agent headers, and optional token authentication. TRIGGER: GitHub API, repositories API, issues API, commits API, GitHub REST, public API.',
+    category:    'Free API',
+    tags:        ['api', 'github', 'repositories', 'issues', 'commits', 'json', 'teaching'],
+    icon:        '🐙',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: GitHub Public API
+description: >
+  Use GitHub's public REST API for classroom projects: search repositories, read
+  issues, inspect commits, list contributors, understand pagination, rate limits,
+  User-Agent headers, and optional token authentication. TRIGGER: GitHub API,
+  repositories API, issues API, commits API, GitHub REST, public API.
+version: 1.0.0
+category: Free API
+tags: [api, github, repositories, issues, commits, json, teaching]
+---
+
+# GitHub Public API
+
+## Overview
+
+Use this skill to teach APIs with real software-engineering data. Students can search repositories, inspect issues, read commit metadata, and learn pagination/rate limits.
+
+Docs: \`https://docs.github.com/rest\`
+
+Many read-only calls work without a token, but rate limits are lower. Tokens are optional and must be stored in \`.env\`, never in code.
+
+---
+
+## Security Check
+
+- Use only public repository data in class.
+- Do not ask students for personal access tokens unless needed.
+- Never commit \`GITHUB_TOKEN\` or \`.env\`.
+- Avoid showing private organization data.
+- Respect rate limits and pagination.
+- Send a clear \`User-Agent\` in scripts.
+
+---
+
+## Search Repositories
+
+\`\`\`python
+import requests
+
+response = requests.get(
+    "https://api.github.com/search/repositories",
+    params={"q": "robotics language:python", "per_page": 5},
+    headers={"User-Agent": "api-class-demo"},
+    timeout=10,
+)
+response.raise_for_status()
+
+data = response.json()
+for repo in data["items"]:
+    print(repo["full_name"], repo["stargazers_count"], repo["html_url"])
+\`\`\`
+
+---
+
+## Read Issues
+
+\`\`\`python
+import requests
+
+url = "https://api.github.com/repos/python/cpython/issues"
+response = requests.get(url, params={"state": "open", "per_page": 5}, timeout=10)
+response.raise_for_status()
+
+for issue in response.json():
+    print(issue["number"], issue["title"])
+\`\`\`
+
+---
+
+## Pagination
+
+GitHub APIs often use pagination:
+
+\`\`\`python
+params = {"per_page": 100, "page": 1}
+\`\`\`
+
+Teach students to request small pages first and look at the \`Link\` response header.
+
+---
+
+## Optional Token from \`.env\`
+
+\`\`\`python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+token = os.getenv("GITHUB_TOKEN")
+headers = {"User-Agent": "api-class-demo"}
+if token:
+    headers["Authorization"] = f"Bearer {token}"
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Repository search dashboard.
+- Issue tracker viewer.
+- Top repositories by topic.
+- Commit timeline for a public project.
+- Compare stars/forks across frameworks.
+
+---
+
+## Best Practices
+
+- Start unauthenticated with public data.
+- Add authentication only when students understand secret handling.
+- Cache repeated class queries.
+- Show rate-limit headers.
+- Keep write APIs out of beginner lessons.
+`
+  },
+
+  // ── PokéAPI ──
+  {
+    id:          'pokeapi',
+    name:        'PokéAPI',
+    description: 'Use the free PokéAPI for fun JSON lessons: Pokémon data, abilities, sprites, types, nested resources, linked URLs, arrays, images, and small search apps. TRIGGER: PokéAPI, Pokemon API, sprites, abilities, types, beginner API.',
+    category:    'Free API',
+    tags:        ['api', 'pokemon', 'json', 'images', 'beginner', 'teaching'],
+    icon:        '🎮',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: PokéAPI
+description: >
+  Use the free PokéAPI for fun JSON lessons: Pokémon data, abilities, sprites,
+  types, nested resources, linked URLs, arrays, images, and small search apps.
+  TRIGGER: PokéAPI, Pokemon API, sprites, abilities, types, beginner API.
+version: 1.0.0
+category: Free API
+tags: [api, pokemon, json, images, beginner, teaching]
+---
+
+# PokéAPI
+
+## Overview
+
+Use this skill for a very friendly first API project. PokéAPI is free, public, no key required, and returns nested JSON that is fun to explore.
+
+Docs: \`https://pokeapi.co/\`
+
+---
+
+## Security Check
+
+- No API key needed.
+- No personal data involved.
+- Cache during class if many students hit the same endpoint.
+- Do not spam the API in loops.
+- Validate user input before building URLs.
+
+---
+
+## First Call
+
+\`\`\`python
+import requests
+
+name = "pikachu"
+response = requests.get(f"https://pokeapi.co/api/v2/pokemon/{name}", timeout=10)
+response.raise_for_status()
+
+data = response.json()
+print(data["name"])
+print(data["height"], data["weight"])
+print([t["type"]["name"] for t in data["types"]])
+print(data["sprites"]["front_default"])
+\`\`\`
+
+---
+
+## Browser Fetch
+
+\`\`\`javascript
+const response = await fetch('https://pokeapi.co/api/v2/pokemon/pikachu');
+const pokemon = await response.json();
+
+console.log(pokemon.name);
+console.log(pokemon.types.map(item => item.type.name));
+console.log(pokemon.sprites.front_default);
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Pokémon search card.
+- Type filter.
+- Random Pokémon button.
+- Guess-the-sprite game.
+- Compare height and weight chart.
+- Follow linked URLs to abilities and species.
+
+---
+
+## Best Practices
+
+- Lowercase names before lookup.
+- Handle 404 for unknown Pokémon.
+- Teach nested arrays using \`types\` and \`abilities\`.
+- Show image rendering with \`sprites.front_default\`.
+`
+  },
+
+  // ── Open Library API ──
+  {
+    id:          'open-library-api',
+    name:        'Open Library API',
+    description: 'Search books, authors, ISBNs, covers, and metadata with Open Library\'s public APIs. Good for teaching query parameters, optional fields, images, missing data, and catalog search. TRIGGER: Open Library API, books API, ISBN, author search, book covers.',
+    category:    'Free API',
+    tags:        ['api', 'books', 'library', 'isbn', 'search', 'json', 'teaching'],
+    icon:        '📖',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Open Library API
+description: >
+  Search books, authors, ISBNs, covers, and metadata with Open Library's public
+  APIs. Good for teaching query parameters, optional fields, images, missing data,
+  and catalog search. TRIGGER: Open Library API, books API, ISBN, author search,
+  book covers.
+version: 1.0.0
+category: Free API
+tags: [api, books, library, isbn, search, json, teaching]
+---
+
+# Open Library API
+
+## Overview
+
+Use this skill to build book-search projects with public library data. Students can search by title, author, or ISBN and display covers.
+
+Docs: \`https://openlibrary.org/developers/api\`
+
+---
+
+## Security Check
+
+- No API key needed for basic search.
+- No personal data required.
+- Book metadata can be incomplete, so handle missing fields.
+- Cache repeated class queries.
+- Credit Open Library when displaying data.
+- The service can occasionally return temporary gateway timeouts; retry politely and cache successful responses.
+
+---
+
+## Search Books
+
+\`\`\`python
+import requests
+
+response = requests.get(
+    "https://openlibrary.org/search.json",
+    params={"q": "robotics", "limit": 5},
+    timeout=20,
+)
+response.raise_for_status()
+
+data = response.json()
+for book in data["docs"]:
+    print(book.get("title"), book.get("author_name", ["Unknown"])[0])
+\`\`\`
+
+---
+
+## Cover Images
+
+If a book has \`cover_i\`, build a cover URL:
+
+\`\`\`python
+cover_id = book.get("cover_i")
+if cover_id:
+    print(f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg")
+\`\`\`
+
+---
+
+## ISBN Lookup
+
+\`\`\`python
+import requests
+
+isbn = "9780134685991"
+response = requests.get(
+    f"https://openlibrary.org/isbn/{isbn}.json",
+    timeout=10,
+)
+response.raise_for_status()
+print(response.json())
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Book search app.
+- Author bibliography viewer.
+- ISBN scanner lookup.
+- Reading list builder.
+- Cover gallery.
+
+---
+
+## Best Practices
+
+- Always use \`.get()\` for optional fields.
+- Show a placeholder when no cover exists.
+- Limit result counts in class demos.
+- Add retry/backoff around temporary 5xx errors.
+- Do not assume one author or one edition.
+`
+  },
+
+  // ── Fake CRUD APIs ──
+  {
+    id:          'fake-crud-apis',
+    name:        'Fake CRUD APIs',
+    description: 'Practice GET, POST, PUT, PATCH, and DELETE with safe fake APIs such as JSONPlaceholder and DummyJSON. Learn REST resources, request bodies, headers, status codes, forms, product carts, and mock backends. TRIGGER: JSONPlaceholder, DummyJSON, fake API, CRUD API, POST request, REST practice.',
+    category:    'Free API',
+    tags:        ['api', 'crud', 'jsonplaceholder', 'dummyjson', 'rest', 'forms', 'teaching'],
+    icon:        '🧪',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Fake CRUD APIs
+description: >
+  Practice GET, POST, PUT, PATCH, and DELETE with safe fake APIs such as
+  JSONPlaceholder and DummyJSON. Learn REST resources, request bodies, headers,
+  status codes, forms, product carts, and mock backends. TRIGGER: JSONPlaceholder,
+  DummyJSON, fake API, CRUD API, POST request, REST practice.
+version: 1.0.0
+category: Free API
+tags: [api, crud, jsonplaceholder, dummyjson, rest, forms, teaching]
+---
+
+# Fake CRUD APIs
+
+## Overview
+
+Use this skill to teach REST operations without risking real data. JSONPlaceholder and DummyJSON provide fake users, posts, comments, products, carts, and auth-like examples.
+
+Docs:
+
+- \`https://jsonplaceholder.typicode.com/\`
+- \`https://dummyjson.com/\`
+
+---
+
+## Security Check
+
+- Use fake data only.
+- Do not submit real passwords or personal data.
+- Explain that POST/PUT responses are simulated and may not persist.
+- Keep fake credentials fake.
+- Do not teach students to trust mock APIs as production systems.
+
+---
+
+## GET Posts
+
+\`\`\`python
+import requests
+
+response = requests.get("https://jsonplaceholder.typicode.com/posts", timeout=10)
+response.raise_for_status()
+
+for post in response.json()[:5]:
+    print(post["id"], post["title"])
+\`\`\`
+
+---
+
+## POST a Fake Resource
+
+\`\`\`python
+import requests
+
+response = requests.post(
+    "https://jsonplaceholder.typicode.com/posts",
+    json={"title": "API class", "body": "Hello REST", "userId": 1},
+    timeout=10,
+)
+response.raise_for_status()
+print(response.status_code, response.json())
+\`\`\`
+
+---
+
+## DummyJSON Products
+
+\`\`\`python
+import requests
+
+response = requests.get("https://dummyjson.com/products/search", params={"q": "phone"}, timeout=10)
+response.raise_for_status()
+
+for product in response.json()["products"][:5]:
+    print(product["title"], product["price"])
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Blog post dashboard.
+- Product search page.
+- Shopping cart mockup.
+- Form that sends POST.
+- REST status-code lab.
+
+---
+
+## Best Practices
+
+- Inspect status codes.
+- Compare GET vs POST in browser/devtools.
+- Validate form input before sending.
+- Make clear which writes are simulated.
+`
+  },
+
+  // ── Jokes and Trivia APIs ──
+  {
+    id:          'jokes-trivia-apis',
+    name:        'Jokes and Trivia APIs',
+    description: 'Build fun beginner API demos with public joke and trivia endpoints: random jokes, quiz questions, categories, multiple-choice answers, HTML entity decoding, and safe classroom filtering. TRIGGER: joke API, trivia API, quiz API, Open Trivia, random joke, beginner API.',
+    category:    'Free API',
+    tags:        ['api', 'jokes', 'trivia', 'quiz', 'beginner', 'json', 'teaching'],
+    icon:        '❓',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Jokes and Trivia APIs
+description: >
+  Build fun beginner API demos with public joke and trivia endpoints: random jokes,
+  quiz questions, categories, multiple-choice answers, HTML entity decoding, and
+  safe classroom filtering. TRIGGER: joke API, trivia API, quiz API, Open Trivia,
+  random joke, beginner API.
+version: 1.0.0
+category: Free API
+tags: [api, jokes, trivia, quiz, beginner, json, teaching]
+---
+
+# Jokes and Trivia APIs
+
+## Overview
+
+Use this skill for quick, fun API demos. Joke and trivia APIs are great for showing request/response flow, randomization, and turning JSON into UI.
+
+Example APIs:
+
+- \`https://official-joke-api.appspot.com/random_joke\`
+- \`https://opentdb.com/api.php?amount=5&type=multiple\`
+
+---
+
+## Security Check
+
+- Public joke/trivia content can be unpredictable.
+- Preview endpoints before class.
+- Prefer safe categories and avoid offensive content where the API supports filters.
+- Do not collect student names or scores unless needed.
+- Decode HTML entities in trivia answers before display.
+
+---
+
+## Random Joke
+
+\`\`\`python
+import requests
+
+response = requests.get("https://official-joke-api.appspot.com/random_joke", timeout=10)
+response.raise_for_status()
+
+joke = response.json()
+print(joke["setup"])
+print(joke["punchline"])
+\`\`\`
+
+---
+
+## Trivia Questions
+
+\`\`\`python
+import html
+import random
+import requests
+
+response = requests.get(
+    "https://opentdb.com/api.php",
+    params={"amount": 5, "type": "multiple"},
+    timeout=10,
+)
+response.raise_for_status()
+
+data = response.json()
+for item in data["results"]:
+    question = html.unescape(item["question"])
+    answers = [html.unescape(item["correct_answer"])] + [html.unescape(a) for a in item["incorrect_answers"]]
+    random.shuffle(answers)
+    print(question)
+    print(answers)
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Random joke button.
+- Trivia quiz game.
+- Score tracker.
+- Category selector.
+- Timed quiz round.
+
+---
+
+## Best Practices
+
+- Add a content warning or preview data before class.
+- Handle API rate limits.
+- Decode HTML entities.
+- Do not assume random content is always classroom-safe.
+`
+  },
+
+  // ── RSS News Feeds ──
+  {
+    id:          'rss-news-feeds',
+    name:        'RSS News Feeds',
+    description: 'Teach API-like data fetching with public RSS/Atom feeds: XML parsing, feed entries, titles, links, dates, filtering, summaries, caching, and news-source responsibility. TRIGGER: RSS feed, Atom feed, news API, XML API, feed parser, headlines.',
+    category:    'Free API',
+    tags:        ['api', 'rss', 'atom', 'news', 'xml', 'feeds', 'teaching'],
+    icon:        '📰',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: RSS News Feeds
+description: >
+  Teach API-like data fetching with public RSS/Atom feeds: XML parsing, feed
+  entries, titles, links, dates, filtering, summaries, caching, and news-source
+  responsibility. TRIGGER: RSS feed, Atom feed, news API, XML API, feed parser,
+  headlines.
+version: 1.0.0
+category: Free API
+tags: [api, rss, atom, news, xml, feeds, teaching]
+---
+
+# RSS News Feeds
+
+## Overview
+
+Use this skill when you want a news-style API lesson without requiring paid news API keys. RSS and Atom feeds are public structured documents, usually XML, and they teach many of the same ideas as APIs.
+
+---
+
+## Security Check
+
+- Use reputable public feeds.
+- Respect copyright; do not republish full articles without permission.
+- Display source and link back to the original page.
+- Cache feeds and do not poll too often.
+- Be careful with user-generated or unmoderated feeds.
+- Treat feed text as untrusted input if rendering HTML.
+- In PowerShell, use \`Invoke-WebRequest -UseBasicParsing\` for feeds to avoid active content parsing prompts.
+
+---
+
+## Python Feed Parsing
+
+\`\`\`bash
+pip install feedparser
+\`\`\`
+
+\`\`\`python
+import feedparser
+
+feed = feedparser.parse("https://www.nasa.gov/news-release/feed/")
+
+print(feed.feed.get("title"))
+for entry in feed.entries[:5]:
+    print(entry.get("title"))
+    print(entry.get("link"))
+\`\`\`
+
+---
+
+## Without Extra Packages
+
+\`\`\`python
+import urllib.request
+import xml.etree.ElementTree as ET
+
+url = "https://www.nasa.gov/news-release/feed/"
+xml_text = urllib.request.urlopen(url, timeout=10).read()
+root = ET.fromstring(xml_text)
+
+for item in root.findall("./channel/item")[:5]:
+    title = item.findtext("title")
+    link = item.findtext("link")
+    print(title, link)
+\`\`\`
+
+PowerShell safe fetch:
+
+\`\`\`powershell
+$response = Invoke-WebRequest -Uri "https://www.nasa.gov/news-release/feed/" -UseBasicParsing
+$response.Content | Select-String "<rss|<feed"
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Headline dashboard.
+- Keyword filter.
+- Feed comparison page.
+- Daily digest generator.
+- Topic alerts for robotics, space, weather, or engineering.
+
+---
+
+## Best Practices
+
+- Prefer feedparser for real projects.
+- Cache feed results.
+- Escape HTML before rendering.
+- Show the source and publication date.
+- Link users to original articles.
+`
+  },
+
+  // ── Exchange Rates API ──
+  {
+    id:          'exchange-rates-api',
+    name:        'Exchange Rates API',
+    description: 'Use free exchange-rate APIs for currency conversion demos: latest rates, historical rates, base currencies, calculations, caching, precision, and finance-data disclaimers. TRIGGER: exchange rate API, currency API, FX rates, currency converter, EUR USD, ILS.',
+    category:    'Free API',
+    tags:        ['api', 'currency', 'exchange-rates', 'finance', 'json', 'teaching'],
+    icon:        '💱',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Exchange Rates API
+description: >
+  Use free exchange-rate APIs for currency conversion demos: latest rates,
+  historical rates, base currencies, calculations, caching, precision, and
+  finance-data disclaimers. TRIGGER: exchange rate API, currency API, FX rates,
+  currency converter, EUR USD, ILS.
+version: 1.0.0
+category: Free API
+tags: [api, currency, exchange-rates, finance, json, teaching]
+---
+
+# Exchange Rates API
+
+## Overview
+
+Use this skill to teach APIs with currency conversion. A good free classroom endpoint is Frankfurter, which is based on European Central Bank reference data.
+
+Docs: \`https://www.frankfurter.app/docs/\`
+
+---
+
+## Security Check
+
+- No key needed for Frankfurter.
+- Use for education, not trading or financial advice.
+- Rates may not be realtime.
+- Cache responses in class.
+- Handle unsupported currencies.
+- Use decimal-aware calculations for serious money apps.
+
+---
+
+## Latest Rates
+
+\`\`\`python
+import requests
+
+response = requests.get(
+    "https://api.frankfurter.app/latest",
+    params={"from": "EUR", "to": "USD,ILS,GBP"},
+    timeout=10,
+)
+response.raise_for_status()
+
+data = response.json()
+print(data["date"])
+print(data["rates"])
+\`\`\`
+
+---
+
+## Convert Amount
+
+\`\`\`python
+amount = 100
+response = requests.get(
+    "https://api.frankfurter.app/latest",
+    params={"amount": amount, "from": "USD", "to": "ILS"},
+    timeout=10,
+)
+response.raise_for_status()
+print(response.json())
+\`\`\`
+
+---
+
+## Historical Rate
+
+\`\`\`python
+response = requests.get(
+    "https://api.frankfurter.app/2024-01-01",
+    params={"from": "EUR", "to": "USD"},
+    timeout=10,
+)
+response.raise_for_status()
+print(response.json())
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Currency converter.
+- Travel budget calculator.
+- Historical exchange-rate chart.
+- Compare currencies over time.
+- Alert when rate crosses a threshold.
+
+---
+
+## Best Practices
+
+- Show the date of the rate.
+- Do not call it realtime unless the provider says so.
+- Validate currency codes.
+- Keep finance disclaimers visible.
+`
+  },
+
+  // ── Public Holidays API ──
+  {
+    id:          'public-holidays-api',
+    name:        'Public Holidays API',
+    description: 'Use free public holiday APIs to build calendars, school planners, country comparisons, countdowns, and date-based apps. Covers country codes, years, local names, global vs regional holidays, and date parsing. TRIGGER: holidays API, public holidays, calendar API, Nager.Date, school calendar.',
+    category:    'Free API',
+    tags:        ['api', 'holidays', 'calendar', 'dates', 'countries', 'json', 'teaching'],
+    icon:        '📅',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Public Holidays API
+description: >
+  Use free public holiday APIs to build calendars, school planners, country
+  comparisons, countdowns, and date-based apps. Covers country codes, years,
+  local names, global vs regional holidays, and date parsing. TRIGGER: holidays
+  API, public holidays, calendar API, Nager.Date, school calendar.
+version: 1.0.0
+category: Free API
+tags: [api, holidays, calendar, dates, countries, json, teaching]
+---
+
+# Public Holidays API
+
+## Overview
+
+Use this skill to teach simple date-based APIs. Nager.Date provides public holiday data for many countries without requiring an API key.
+
+Docs: \`https://date.nager.at/Api\`
+
+---
+
+## Security Check
+
+- No key needed.
+- No personal data involved.
+- Holiday definitions can vary by region and source.
+- Do not assume it covers school vacation days.
+- Cache repeated class calls.
+
+---
+
+## Get Holidays for a Country
+
+\`\`\`python
+import requests
+
+year = 2026
+country = "IL"
+response = requests.get(
+    f"https://date.nager.at/api/v3/PublicHolidays/{year}/{country}",
+    timeout=10,
+)
+response.raise_for_status()
+
+for holiday in response.json():
+    print(holiday["date"], holiday["localName"], holiday["name"])
+\`\`\`
+
+---
+
+## Check If Today Is a Holiday
+
+\`\`\`python
+import datetime as dt
+
+today = dt.date.today().isoformat()
+holidays = response.json()
+match = [h for h in holidays if h["date"] == today]
+
+if match:
+    print("Holiday today:", match[0]["localName"])
+else:
+    print("No public holiday today in this dataset")
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Holiday calendar.
+- Country comparison.
+- Countdown to next holiday.
+- Workday calculator.
+- School event planner.
+
+---
+
+## Best Practices
+
+- Use ISO country codes.
+- Parse dates as dates, not strings, when comparing.
+- Show source and year.
+- Verify local/regional holidays before relying on the data.
+`
+  },
+
+  // ── USGS Earthquake API ──
+  {
+    id:          'usgs-earthquake-api',
+    name:        'USGS Earthquake API',
+    description: 'Use USGS earthquake feeds for map and data projects: GeoJSON, magnitude, location, time, recent earthquakes, bounding boxes, plotting, and alert-style dashboards. TRIGGER: earthquake API, USGS API, GeoJSON, earthquake map, magnitude, seismic data.',
+    category:    'Free API',
+    tags:        ['api', 'earthquake', 'usgs', 'geojson', 'maps', 'science', 'teaching'],
+    icon:        '🌋',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: USGS Earthquake API
+description: >
+  Use USGS earthquake feeds for map and data projects: GeoJSON, magnitude,
+  location, time, recent earthquakes, bounding boxes, plotting, and alert-style
+  dashboards. TRIGGER: earthquake API, USGS API, GeoJSON, earthquake map,
+  magnitude, seismic data.
+version: 1.0.0
+category: Free API
+tags: [api, earthquake, usgs, geojson, maps, science, teaching]
+---
+
+# USGS Earthquake API
+
+## Overview
+
+Use this skill to teach geospatial APIs with live science data. USGS earthquake feeds return GeoJSON, making them excellent for map projects.
+
+Docs: \`https://earthquake.usgs.gov/fdsnws/event/1/\`
+
+---
+
+## Security Check
+
+- No key needed.
+- Data is public science data.
+- Do not present classroom dashboards as emergency warning systems.
+- Cache repeated requests.
+- Handle empty result sets.
+- Show source and timestamp.
+
+---
+
+## Recent Earthquakes Feed
+
+\`\`\`python
+import datetime as dt
+import requests
+
+response = requests.get(
+    "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
+    timeout=10,
+)
+response.raise_for_status()
+
+data = response.json()
+for feature in data["features"][:5]:
+    props = feature["properties"]
+    lon, lat, depth = feature["geometry"]["coordinates"]
+    time = dt.datetime.fromtimestamp(props["time"] / 1000, tz=dt.timezone.utc)
+    print(props["mag"], props["place"], lat, lon, time)
+\`\`\`
+
+---
+
+## Query by Bounding Box
+
+\`\`\`python
+import requests
+
+response = requests.get(
+    "https://earthquake.usgs.gov/fdsnws/event/1/query",
+    params={
+        "format": "geojson",
+        "starttime": "2026-01-01",
+        "endtime": "2026-01-31",
+        "minmagnitude": 4,
+        "minlatitude": 29,
+        "maxlatitude": 34,
+        "minlongitude": 34,
+        "maxlongitude": 36,
+    },
+    timeout=10,
+)
+response.raise_for_status()
+print(response.json()["metadata"]["count"])
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Recent earthquake map.
+- Magnitude histogram.
+- Filter by region.
+- Alert-style dashboard with clear disclaimer.
+- Compare earthquakes by day.
+
+---
+
+## Best Practices
+
+- Learn GeoJSON: \`features\`, \`geometry\`, \`properties\`.
+- Convert epoch milliseconds to readable time.
+- Do not over-poll feeds.
+- Label units and timestamps.
+`
+  },
+
+  // ── Open-Meteo Air Quality API ──
+  {
+    id:          'open-meteo-air-quality-api',
+    name:        'Open-Meteo Air Quality API',
+    description: 'Use Open-Meteo\'s free air-quality API for environmental data projects: PM2.5, PM10, ozone, nitrogen dioxide, European AQI, hourly forecasts, charts, health disclaimers, and city comparisons. TRIGGER: air quality API, AQI, PM2.5, pollution API, Open-Meteo air quality.',
+    category:    'Free API',
+    tags:        ['api', 'air-quality', 'open-meteo', 'environment', 'aqi', 'json', 'teaching'],
+    icon:        '🌫️',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Open-Meteo Air Quality API
+description: >
+  Use Open-Meteo's free air-quality API for environmental data projects: PM2.5,
+  PM10, ozone, nitrogen dioxide, European AQI, hourly forecasts, charts, health
+  disclaimers, and city comparisons. TRIGGER: air quality API, AQI, PM2.5,
+  pollution API, Open-Meteo air quality.
+version: 1.0.0
+category: Free API
+tags: [api, air-quality, open-meteo, environment, aqi, json, teaching]
+---
+
+# Open-Meteo Air Quality API
+
+## Overview
+
+Use this skill to extend weather API lessons into environmental data. Open-Meteo provides air-quality forecasts with no key for light/non-commercial use.
+
+Docs: \`https://open-meteo.com/en/docs/air-quality-api\`
+
+---
+
+## Security Check
+
+- No key needed for light/non-commercial use.
+- Do not provide medical advice.
+- Show source, units, and timestamp.
+- Avoid over-polling.
+- Use health disclaimers for AQI-related displays.
+
+---
+
+## First Call
+
+\`\`\`python
+import requests
+
+response = requests.get(
+    "https://air-quality-api.open-meteo.com/v1/air-quality",
+    params={
+        "latitude": 32.0853,
+        "longitude": 34.7818,
+        "hourly": "pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,ozone,european_aqi",
+        "timezone": "Asia/Jerusalem",
+    },
+    timeout=10,
+)
+response.raise_for_status()
+
+data = response.json()
+print(data["hourly"]["time"][:3])
+print(data["hourly"]["pm2_5"][:3])
+\`\`\`
+
+---
+
+## Find Worst Hour
+
+\`\`\`python
+hourly = data["hourly"]
+values = list(zip(hourly["time"], hourly["european_aqi"]))
+values = [(time, aqi) for time, aqi in values if aqi is not None]
+worst_time, worst_aqi = max(values, key=lambda item: item[1])
+print(worst_time, worst_aqi)
+\`\`\`
+
+---
+
+## Mini Projects
+
+- Air-quality card for a city.
+- PM2.5 chart.
+- Compare Tel Aviv, Haifa, Jerusalem, and Eilat.
+- Simple outdoor-activity advisory with disclaimer.
+- Combine geocoding -> air-quality lookup.
+
+---
+
+## Best Practices
+
+- Label units clearly.
+- Use a disclaimer: informational, not medical advice.
+- Handle missing values.
+- Avoid scary UI language.
+- Cache repeated class queries.
+`
   }
 
 ];

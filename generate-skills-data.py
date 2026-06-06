@@ -28,6 +28,16 @@ CATALOG = [
     dict(id='openstreetmap-nominatim-api', name='OpenStreetMap Nominatim API', icon='🗺️', category='Free API', tags=['api','maps','openstreetmap','geocoding','location','json','teaching'], version='1.0.0'),
     dict(id='rest-countries-api', name='REST Countries API', icon='🌍', category='Free API', tags=['api','countries','geography','json','flags','teaching'], version='1.0.0'),
     dict(id='openai-api-setup', name='OpenAI API Setup and Cost Tracking', icon='🔑', category='API', tags=['api','openai','ai','dotenv','python','cost','tokens','security'], version='1.0.0'),
+    dict(id='github-public-api', name='GitHub Public API', icon='🐙', category='Free API', tags=['api','github','repositories','issues','commits','json','teaching'], version='1.0.0'),
+    dict(id='pokeapi', name='PokéAPI', icon='🎮', category='Free API', tags=['api','pokemon','json','images','beginner','teaching'], version='1.0.0'),
+    dict(id='open-library-api', name='Open Library API', icon='📖', category='Free API', tags=['api','books','library','isbn','search','json','teaching'], version='1.0.0'),
+    dict(id='fake-crud-apis', name='Fake CRUD APIs', icon='🧪', category='Free API', tags=['api','crud','jsonplaceholder','dummyjson','rest','forms','teaching'], version='1.0.0'),
+    dict(id='jokes-trivia-apis', name='Jokes and Trivia APIs', icon='❓', category='Free API', tags=['api','jokes','trivia','quiz','beginner','json','teaching'], version='1.0.0'),
+    dict(id='rss-news-feeds', name='RSS News Feeds', icon='📰', category='Free API', tags=['api','rss','atom','news','xml','feeds','teaching'], version='1.0.0'),
+    dict(id='exchange-rates-api', name='Exchange Rates API', icon='💱', category='Free API', tags=['api','currency','exchange-rates','finance','json','teaching'], version='1.0.0'),
+    dict(id='public-holidays-api', name='Public Holidays API', icon='📅', category='Free API', tags=['api','holidays','calendar','dates','countries','json','teaching'], version='1.0.0'),
+    dict(id='usgs-earthquake-api', name='USGS Earthquake API', icon='🌋', category='Free API', tags=['api','earthquake','usgs','geojson','maps','science','teaching'], version='1.0.0'),
+    dict(id='open-meteo-air-quality-api', name='Open-Meteo Air Quality API', icon='🌫️', category='Free API', tags=['api','air-quality','open-meteo','environment','aqi','json','teaching'], version='1.0.0'),
 ]
 
 
