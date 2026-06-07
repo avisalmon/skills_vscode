@@ -237,11 +237,12 @@ What this skill enables Copilot to do.
           </div>
 
           <h3>Frontmatter fields</h3>
+          <p>Copilot itself only reads <code>name</code> and <code>description</code> from <code>SKILL.md</code>. The <code>version</code>, <code>category</code>, and <code>tags</code> fields are optional metadata — useful for humans and tooling, but Copilot does not require them to load a skill.</p>
           <table class="guide-table">
             <thead>
               <tr>
                 <th>Field</th>
-                <th>Required</th>
+                <th>Used by Copilot?</th>
                 <th>Purpose</th>
               </tr>
             </thead>
@@ -258,21 +259,26 @@ What this skill enables Copilot to do.
               </tr>
               <tr>
                 <td><code>version</code></td>
-                <td>Recommended</td>
-                <td>Semantic version string, e.g. <code>1.0.0</code></td>
+                <td>No — optional metadata</td>
+                <td>Semantic version string, e.g. <code>1.0.0</code>. Handy for tracking updates over time.</td>
               </tr>
               <tr>
                 <td><code>category</code></td>
-                <td>No</td>
+                <td>No — optional metadata</td>
                 <td>DevOps, Data Science, Frontend, Backend, etc.</td>
               </tr>
               <tr>
                 <td><code>tags</code></td>
-                <td>No</td>
-                <td>Array of keywords for store search &amp; discovery</td>
+                <td>No — optional metadata</td>
+                <td>Array of keywords for search &amp; discovery</td>
               </tr>
             </tbody>
           </table>
+
+          <div class="callout callout-blue">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-body">In <strong>this store</strong>, the <code>name</code> and <code>description</code> shown on each card come from the skill's <code>SKILL.md</code>, while <code>version</code>, <code>category</code>, and <code>tags</code> are maintained centrally in the catalog (<code>generate-skills-data.py</code>). That keeps display metadata consistent and easy to update in one place if we revise it in the future.</div>
+          </div>
         </section>
 
         <!-- ── Writing a Good Skill ───────────────────────────── -->
