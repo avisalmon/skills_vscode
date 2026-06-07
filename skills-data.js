@@ -4997,6 +4997,11926 @@ print(worst_time, worst_aqi)
 - Avoid scary UI language.
 - Cache repeated class queries.
 `
+  },
+
+  // ── Skill Creator ──
+  {
+    id:          'skill-creator',
+    name:        'Skill Creator',
+    description: 'What it does and when to trigger. Be slightly pushy — list specific trigger words so the skill fires reliably. TRIGGER: user says "keyword1", "keyword2", "phrase3".',
+    category:    'Productivity',
+    tags:        ['skills', 'copilot', 'prompts', 'evaluation', 'workflow', 'authoring'],
+    icon:        '🧭',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: skill-creator
+description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy. TRIGGER: user says "create a skill", "make a skill", "turn this into a skill", "improve this skill", "this skill isn't triggering", "optimize the skill description", or "test my skill".
+---
+
+# Skill Creator
+
+A skill for creating new skills and iteratively improving them.
+
+> **Adapted from Anthropic's skill-creator for VS Code Copilot.** The skill-writing
+> philosophy below is Anthropic's and is model-agnostic. The *mechanics* (skill
+> location, frontmatter format, how test runs and the description optimizer execute)
+> have been reframed for this environment — VS Code Copilot on Windows, where skills
+> live as folders under \`~/.copilot/skills/\` and there is no \`claude\` CLI. Where a
+> step originally required Claude Code only, this file gives a VS Code equivalent.
+
+At a high level, the process of creating a skill goes like this:
+
+- Decide what you want the skill to do and roughly how it should do it
+- Write a draft of the skill
+- Create a few test prompts and run the-agent-with-access-to-the-skill on them
+- Help the user evaluate the results both qualitatively and quantitatively
+- Rewrite the skill based on feedback (and any glaring flaws the benchmarks expose)
+- Repeat until you're satisfied
+- Expand the test set and try again at larger scale
+
+Your job when using this skill is to figure out where the user is in this process and
+jump in to help them progress. If they say "I want to make a skill for X", help narrow
+it down, write a draft, write test cases, run them, and iterate. If they already have a
+draft, jump straight to the eval/iterate part of the loop. And if the user says "I don't
+need a bunch of evaluations, just vibe with me" — do that instead. Be flexible.
+
+After the skill is in good shape, you can also run the **description optimizer** to
+improve how reliably the skill triggers.
+
+## Environment facts for this setup
+
+These are the concrete, environment-specific facts that override the original
+Anthropic instructions. Everything else in this file applies as written.
+
+| Topic | This environment (VS Code Copilot / Windows) |
+|-------|----------------------------------------------|
+| Skill location | \`%USERPROFILE%\\.copilot\\skills\\<skill-name>\\SKILL.md\` |
+| Skill format | A folder containing \`SKILL.md\` (+ optional \`scripts/\`, \`references/\`, \`assets/\`). **No \`.skill\` package, no install step** — the folder *is* the skill. |
+| Frontmatter | YAML with \`name\` + \`description\` (see below). The skill is surfaced to the agent via the \`<skill>\` block in \`copilot-instructions.md\`. |
+| Subagents | This agent has \`runSubagent\` (e.g. the \`Explore\` agent). Use it for parallel test runs **if available**. If not, run test cases inline, one at a time. |
+| Running test cases | Spawn subagents via \`runSubagent\`, or run inline. There is **no \`claude -p\` CLI**. |
+| Description optimizer | The automated \`scripts/run_loop.py\` needs the \`claude\` CLI and does **not** run here. Use the **manual optimization workflow** in this file instead. |
+| Shell | PowerShell on Windows. Use \`Copy-Item -Recurse\`, \`Remove-Item\`, \`$PID\`, etc. — not \`cp -r\`, \`nohup\`, \`kill $PID\`, \`/tmp/\`, \`open\`. |
+| Browser viewer | \`eval-viewer/generate_review.py\` works (Python + a browser). On a headless box, pass \`--static <path>\` to emit a standalone HTML file. |
+
+## Communicating with the user
+
+This skill is used by people across a wide range of familiarity with coding jargon. Pay
+attention to context cues to understand how to phrase your communication. In the default
+case: "evaluation" and "benchmark" are borderline-OK; for "JSON" and "assertion" you want
+real cues that the user knows those terms before using them unexplained. It's fine to
+briefly define a term if you're in doubt.
+
+---
+
+## Creating a skill
+
+### Capture Intent
+
+Start by understanding the user's intent. The current conversation might already contain a
+workflow the user wants to capture (e.g., they say "turn this into a skill"). If so,
+extract answers from the conversation history first — the tools used, the sequence of
+steps, corrections the user made, input/output formats observed. Have the user fill the
+gaps and confirm before proceeding.
+
+1. What should this skill enable the agent to do?
+2. When should this skill trigger? (what user phrases/contexts)
+3. What's the expected output format?
+4. Should we set up test cases to verify the skill works? Skills with objectively
+   verifiable outputs (file transforms, data extraction, code generation, fixed workflow
+   steps) benefit from test cases. Skills with subjective outputs (writing style, art)
+   often don't. Suggest the appropriate default, but let the user decide.
+
+### Interview and Research
+
+Proactively ask about edge cases, input/output formats, example files, success criteria,
+and dependencies. Wait to write test prompts until this is ironed out.
+
+Check for similar skills first: look under \`%USERPROFILE%\\.copilot\\skills\\\` to avoid
+duplicating an existing skill, and read related \`SKILL.md\` files to match local
+conventions. If the skill wraps an API or tool, check its docs. If subagents are available
+and research would help, research in parallel via \`runSubagent\`; otherwise inline.
+
+### Write the SKILL.md
+
+Based on the interview, fill in these components:
+
+- **name**: Skill identifier (kebab-case, matches the folder name).
+- **description**: When to trigger and what it does. This is the **primary triggering
+  mechanism** — include both what the skill does AND specific contexts for when to use it.
+  All "when to use" info goes here, not in the body. The agent tends to **undertrigger**
+  skills, so make descriptions a little "pushy": list specific trigger words/phrases. For
+  example, instead of "Build a dashboard to display internal data", write "Build a
+  dashboard to display internal data. Use this whenever the user mentions dashboards, data
+  visualization, internal metrics, or wants to display any kind of company data, even if
+  they don't explicitly say 'dashboard'." End with a \`TRIGGER:\` line of literal phrases.
+- **the rest of the skill :)**
+
+#### Frontmatter format (this environment)
+
+\`\`\`yaml
+---
+name: skill-name
+description: >
+  What it does and when to trigger. Be slightly pushy — list specific trigger
+  words so the skill fires reliably.
+  TRIGGER: user says "keyword1", "keyword2", "phrase3".
+---
+\`\`\`
+
+The skill is then exposed to the agent through a \`<skill>\` entry in the relevant
+\`copilot-instructions.md\`:
+
+\`\`\`xml
+<skill>
+<name>skill-name</name>
+<description>Same description as the frontmatter, including the TRIGGER line.</description>
+<file>%USERPROFILE%\\.copilot\\skills\\skill-name\\SKILL.md</file>
+</skill>
+\`\`\`
+
+### Skill Writing Guide
+
+#### Anatomy of a Skill
+
+\`\`\`
+skill-name/
+├── SKILL.md (required)
+│   ├── YAML frontmatter (name, description required)
+│   └── Markdown instructions
+└── Bundled Resources (optional)
+    ├── scripts/    - Executable code for deterministic/repetitive tasks
+    ├── references/ - Docs loaded into context as needed
+    └── assets/     - Files used in output (templates, icons, fonts)
+\`\`\`
+
+#### Progressive Disclosure
+
+Skills use a three-level loading system:
+1. **Metadata** (name + description) — always in context (~100 words)
+2. **SKILL.md body** — in context whenever the skill triggers (<500 lines ideal)
+3. **Bundled resources** — as needed (unlimited; scripts can execute without loading)
+
+These counts are approximate; go longer if needed.
+
+**Key patterns:**
+- Keep SKILL.md under 500 lines; if approaching the limit, add a layer of hierarchy with
+  clear pointers to where the model should go next.
+- Reference files clearly from SKILL.md with guidance on when to read them.
+- For large reference files (>300 lines), include a table of contents.
+
+**Domain organization** — when a skill supports multiple domains/frameworks, organize by
+variant so the agent reads only the relevant reference file:
+\`\`\`
+cloud-deploy/
+├── SKILL.md (workflow + selection)
+└── references/
+    ├── aws.md
+    ├── gcp.md
+    └── azure.md
+\`\`\`
+
+#### Principle of Lack of Surprise
+
+Skills must not contain malware, exploit code, or anything that could compromise system
+security. A skill's contents should not surprise the user given its description. Don't
+create misleading skills or skills designed to facilitate unauthorized access, data
+exfiltration, or other malicious activity. (Things like "roleplay as an X" are fine.)
+
+#### Writing Patterns
+
+Prefer the imperative form in instructions.
+
+**Defining output formats:**
+\`\`\`markdown
+## Report structure
+ALWAYS use this exact template:
+# [Title]
+## Executive summary
+## Key findings
+## Recommendations
+\`\`\`
+
+**Examples pattern:**
+\`\`\`markdown
+## Commit message format
+Input: Added user authentication with JWT tokens
+Output: feat(auth): implement JWT-based authentication
+\`\`\`
+
+#### Writing Style
+
+Explain to the model **why** things are important rather than relying on heavy-handed
+musty MUSTs. Use theory of mind; keep the skill general rather than narrow to specific
+examples. Write a draft, then look at it with fresh eyes and improve it. (Exception:
+genuinely safety-critical or destructive-action rules deserve strong, explicit language.)
+
+### Register the skill
+
+After writing \`SKILL.md\`, add the \`<skill>\` block (above) to the appropriate
+\`copilot-instructions.md\` so the agent actually sees it in its skill list. A skill that
+isn't registered will never trigger.
+
+### Test Cases
+
+After writing the draft, come up with 2-3 realistic test prompts — the kind of thing a
+real user would actually say. Share them: "Here are a few test cases I'd like to try. Do
+these look right, or do you want to add more?" Then run them.
+
+Save test cases to \`evals/evals.json\`. Don't write assertions yet — just the prompts.
+You'll draft assertions in the next step while runs are in progress.
+
+\`\`\`json
+{
+  "skill_name": "example-skill",
+  "evals": [
+    { "id": 1, "prompt": "User's task prompt", "expected_output": "Description of expected result", "files": [] }
+  ]
+}
+\`\`\`
+
+See \`references/schemas.md\` for the full schema (including the \`assertions\` field).
+
+## Running and evaluating test cases
+
+This section is one continuous sequence — don't stop partway through.
+
+Put results in \`<skill-name>-workspace/\` as a sibling to the skill directory. Within it,
+organize by iteration (\`iteration-1/\`, \`iteration-2/\`, …) and within that, each test case
+gets a directory (\`eval-0/\`, \`eval-1/\`, …). Create directories as you go, not upfront.
+
+### Step 1: Spawn all runs (with-skill AND baseline) in the same turn
+
+For each test case, you want two runs — one **with** the skill, one **baseline** (without).
+If \`runSubagent\` is available, spawn both in the same turn so they finish around the same
+time. If subagents are **not** available, run them inline one at a time (see "No-subagent
+fallback" below).
+
+**With-skill run** — give the subagent:
+\`\`\`
+Execute this task:
+- Skill path: <path-to-skill>
+- Task: <eval prompt>
+- Input files: <eval files if any, or "none">
+- Save outputs to: <workspace>/iteration-<N>/eval-<ID>/with_skill/outputs/
+- Outputs to save: <what the user cares about — e.g., "the .docx file", "the final CSV">
+\`\`\`
+
+**Baseline run** (same prompt; baseline depends on context):
+- **Creating a new skill**: no skill at all. Save to \`without_skill/outputs/\`.
+- **Improving an existing skill**: the old version. Before editing, snapshot the skill
+  (\`Copy-Item -Recurse <skill-path> <workspace>\\skill-snapshot\`), then point the baseline
+  subagent at the snapshot. Save to \`old_skill/outputs/\`.
+
+Write an \`eval_metadata.json\` per test case (assertions can be empty for now). Give each
+eval a descriptive name based on what it tests — use that name for the directory too.
+
+\`\`\`json
+{ "eval_id": 0, "eval_name": "descriptive-name-here", "prompt": "The user's task prompt", "assertions": [] }
+\`\`\`
+
+**No-subagent fallback:** read the skill's \`SKILL.md\`, then follow its instructions to
+accomplish the test prompt yourself, one at a time. This is less rigorous (you wrote the
+skill and you're running it, so you have full context), but it's a useful sanity check and
+the human review step compensates. You can skip the baseline runs in this mode — just use
+the skill to complete each task.
+
+### Step 2: While runs are in progress, draft assertions
+
+Don't just wait. Draft quantitative assertions for each test case and explain them to the
+user. Good assertions are objectively verifiable and have descriptive names that read
+clearly in the viewer. Subjective skills (writing style, design quality) are better judged
+qualitatively — don't force assertions onto things that need human judgment. Update
+\`eval_metadata.json\` and \`evals/evals.json\` once assertions are drafted.
+
+### Step 3: As runs complete, capture timing data
+
+If subagent completions report \`total_tokens\` and \`duration_ms\`, save them immediately to
+\`timing.json\` in the run directory:
+\`\`\`json
+{ "total_tokens": 84852, "duration_ms": 23332, "total_duration_seconds": 23.3 }
+\`\`\`
+Process each completion as it arrives. (If your environment doesn't surface token/timing
+data, skip this — the qualitative review and assertion pass still work.)
+
+### Step 4: Grade, aggregate, and launch the viewer
+
+1. **Grade each run** — read \`agents/grader.md\` and evaluate each assertion against the
+   outputs (spawn a grader subagent or grade inline). Save \`grading.json\` in each run
+   directory. The \`expectations\` array must use the fields \`text\`, \`passed\`, and \`evidence\`
+   — the viewer depends on these exact names. For assertions checkable programmatically,
+   write and run a script rather than eyeballing it.
+
+2. **Aggregate into a benchmark** — from the skill-creator directory:
+   \`\`\`powershell
+   python -m scripts.aggregate_benchmark <workspace>\\iteration-N --skill-name <name>
+   \`\`\`
+   Produces \`benchmark.json\` + \`benchmark.md\` (pass_rate, time, tokens per config, mean ±
+   stddev, delta). Put each \`with_skill\` config before its baseline counterpart. See
+   \`references/schemas.md\` for the exact schema if generating manually.
+
+3. **Analyst pass** — read the benchmark and surface patterns the aggregates hide (see
+   \`agents/analyzer.md\`): non-discriminating assertions (always pass regardless of skill),
+   high-variance/flaky evals, time/token tradeoffs.
+
+4. **Launch the viewer** with both qualitative outputs and quantitative data:
+   \`\`\`powershell
+   python <skill-creator-path>\\eval-viewer\\generate_review.py \`
+     <workspace>\\iteration-N \`
+     --skill-name "my-skill" \`
+     --benchmark <workspace>\\iteration-N\\benchmark.json
+   \`\`\`
+   For iteration 2+, also pass \`--previous-workspace <workspace>\\iteration-<N-1>\`. On a
+   headless machine, add \`--static <output.html>\` to write a standalone file instead of
+   starting a server; the "Submit All Reviews" button then downloads \`feedback.json\`, which
+   you copy into the workspace for the next iteration. Use \`generate_review.py\` — don't
+   hand-write HTML.
+
+5. **Tell the user**: "I've opened the results. The 'Outputs' tab lets you click through
+   each test case and leave feedback; the 'Benchmark' tab shows the quantitative
+   comparison. Come back here when you're done."
+
+### Step 5: Read the feedback
+
+When the user says they're done, read \`feedback.json\`:
+\`\`\`json
+{ "reviews": [ { "run_id": "eval-0-with_skill", "feedback": "the chart is missing axis labels", "timestamp": "..." } ], "status": "complete" }
+\`\`\`
+Empty feedback means the user thought it was fine. Focus improvements on the cases with
+specific complaints. If you started a viewer server, stop it when done (close the terminal
+running it, or \`Stop-Process -Id <pid>\`).
+
+---
+
+## Improving the skill
+
+This is the heart of the loop.
+
+1. **Generalize from the feedback.** Skills are meant to be used many times across many
+   prompts. You and the user iterate on a few examples because it's fast, but if the skill
+   only works for those examples it's useless. Avoid fiddly overfit changes and oppressive
+   MUSTs; if an issue is stubborn, try a different metaphor or working pattern.
+2. **Keep the prompt lean.** Remove things that aren't pulling their weight. Read the
+   transcripts, not just final outputs — if the skill makes the model waste time, cut the
+   instruction causing it and see what happens.
+3. **Explain the why.** Today's models have good theory of mind; given a good harness they
+   go beyond rote instructions. If you're writing ALWAYS/NEVER in all caps or rigid
+   structures, that's a yellow flag — reframe and explain the reasoning instead.
+4. **Look for repeated work across test cases.** If every run independently wrote a similar
+   helper script or took the same multi-step approach, that's a strong signal to bundle the
+   script in \`scripts/\` and have the skill use it — saving every future invocation from
+   reinventing the wheel.
+
+Take your time thinking; thinking time is not the blocker. Write a draft revision, look at
+it anew, and improve.
+
+### The iteration loop
+
+After improving the skill:
+1. Apply your improvements.
+2. Rerun all test cases into a new \`iteration-<N+1>/\` directory, including baselines. For a
+   new skill the baseline stays \`without_skill\`; for an existing skill, use judgment (the
+   original the user came in with, or the previous iteration).
+3. Launch the viewer with \`--previous-workspace\` pointing at the previous iteration.
+4. Wait for the user to review, then read the new feedback and repeat.
+
+Keep going until the user is happy, the feedback is all empty, or you stop making
+meaningful progress.
+
+---
+
+## Advanced: Blind comparison
+
+For a more rigorous comparison between two versions (e.g., "is the new version actually
+better?"), use the blind comparison system: read \`agents/comparator.md\` and
+\`agents/analyzer.md\`. The idea is to give two outputs to an independent agent without
+telling it which is which, let it judge quality, then analyze why the winner won. This is
+optional and requires subagents; the human review loop is usually sufficient.
+
+---
+
+## Description Optimization (manual workflow for VS Code Copilot)
+
+The description field is the primary mechanism that decides whether the agent invokes a
+skill. After creating or improving a skill, offer to optimize the description for better
+triggering accuracy.
+
+> **Note:** The automated optimizer (\`scripts/run_loop.py\`, \`run_eval.py\`,
+> \`improve_description.py\`) drives the \`claude -p\` CLI and Claude Code's
+> \`.claude/commands/\` discovery, **neither of which exists in VS Code Copilot**. The
+> scripts are kept in \`scripts/\` for reference / Claude Code users. In this environment,
+> run the optimization **manually** as below.
+
+### Step 1: Generate trigger eval queries
+
+Create ~20 queries — a mix of should-trigger and should-not-trigger:
+\`\`\`json
+[
+  { "query": "the user prompt", "should_trigger": true },
+  { "query": "another prompt", "should_trigger": false }
+]
+\`\`\`
+Make them realistic — concrete, specific, with detail (file paths, job context, column
+names, company names, URLs, a little backstory). Some lowercase, abbreviated, or typo-y.
+Mix lengths and focus on edge cases.
+
+- **Bad:** \`"Format this data"\`, \`"Extract text from PDF"\`, \`"Create a chart"\`.
+- **Good:** \`"ok so my boss just sent me this xlsx (it's in my downloads, 'Q4 sales final FINAL v2.xlsx') and wants me to add a column showing profit margin as a %. revenue is col C, costs col D i think"\`.
+
+For **should-trigger** (8-10): different phrasings of the same intent, formal and casual,
+cases where the user doesn't name the skill/file type but clearly needs it, uncommon use
+cases, and cases where this skill competes with another but should win.
+
+For **should-not-trigger** (8-10): the valuable ones are **near-misses** — queries that
+share keywords/concepts but actually need something else. Avoid obviously-irrelevant
+negatives ("write a fibonacci function" for a PDF skill tests nothing).
+
+### Step 2: Review with the user
+
+Present the eval set for review. You can use the HTML template at \`assets/eval_review.html\`:
+1. Read the template.
+2. Replace \`__EVAL_DATA_PLACEHOLDER__\` (the JSON array, no surrounding quotes),
+   \`__SKILL_NAME_PLACEHOLDER__\`, and \`__SKILL_DESCRIPTION_PLACEHOLDER__\`.
+3. Write to a temp file and open it (e.g. \`Invoke-Item .\\eval_review_<skill>.html\`).
+4. The user edits queries, toggles should-trigger, and clicks "Export Eval Set" (downloads
+   to the Downloads folder). Or just review the queries inline in chat — that's fine too.
+
+Bad eval queries lead to bad descriptions, so this review matters.
+
+### Step 3: Optimize manually
+
+Without the \`claude -p\` loop, iterate by hand:
+1. For each query, judge honestly whether the **current** description would cause the agent
+   to load the skill. Be strict — the agent only consults a skill it actually needs.
+2. Find the misses: should-trigger queries that wouldn't fire (description too narrow /
+   missing phrases) and should-not-trigger queries that would fire (description too broad /
+   leaking into adjacent domains).
+3. Propose a revised description that fixes those without breaking the passing cases. Add
+   missing trigger phrases for under-triggering; tighten scope and add "do not use for…"
+   guidance for over-triggering.
+4. Re-judge all queries against the revision. Repeat until trigger accuracy is good and
+   you're not overfitting to the train queries (hold a few back as a sanity check).
+5. Show the user before/after and the reasoning, then apply the chosen description to both
+   the \`SKILL.md\` frontmatter and the \`<skill>\` block in \`copilot-instructions.md\`.
+
+### How skill triggering works
+
+Skills appear in the agent's skill list with their name + description; the agent decides
+whether to consult a skill based on that description. Importantly, the agent only consults
+skills for tasks it can't easily handle on its own — simple one-step queries like "read
+this PDF" may not trigger a skill even with a perfect description, because the agent can
+just do them. So make your eval queries **substantive** — multi-step or specialized enough
+that consulting a skill actually helps. Simple queries like "read file X" are poor tests.
+
+---
+
+## Packaging / install (this environment)
+
+There is **no \`.skill\` package step** here. A skill is just its folder under
+\`%USERPROFILE%\\.copilot\\skills\\<skill-name>\\\`. To "install" a skill, place the folder
+there and register the \`<skill>\` block in \`copilot-instructions.md\`. (The Anthropic
+\`scripts/package_skill.py\` exists for producing \`.skill\` bundles for Claude Code / Claude.ai
+and is optional — not used by VS Code Copilot.)
+
+**Updating an existing skill:** preserve the original directory name and \`name\` frontmatter
+field. If the installed path is read-only, copy it to a writeable location, edit there, and
+copy back.
+
+---
+
+## Reference files
+
+\`agents/\` — instructions for specialized subagents; read when spawning the relevant one:
+- \`agents/grader.md\` — evaluate assertions against outputs
+- \`agents/comparator.md\` — blind A/B comparison between two outputs
+- \`agents/analyzer.md\` — analyze why one version beat another
+
+\`references/\`:
+- \`references/schemas.md\` — JSON structures for evals.json, grading.json, benchmark.json, etc.
+
+\`scripts/\` — helper scripts. \`aggregate_benchmark.py\`, \`generate_report.py\`, and
+\`quick_validate.py\` are portable Python. \`run_eval.py\`, \`run_loop.py\`, and
+\`improve_description.py\` require the \`claude\` CLI and are **Claude Code only** — use the
+manual description-optimization workflow above instead.
+
+---
+
+Core loop, one more time for emphasis:
+- Figure out what the skill is about
+- Draft or edit the skill
+- Run the-agent-with-access-to-the-skill on test prompts
+- With the user, evaluate the outputs (build \`benchmark.json\`, run \`generate_review.py\`)
+- Repeat until you and the user are satisfied
+- Register the skill (and update its description for reliable triggering)
+
+Add these steps to your todo list so you don't forget. Good luck!
+`
+  },
+
+  // ── Playwright CLI ──
+  {
+    id:          'playwright-cli',
+    name:        'Playwright CLI',
+    description: 'Automate browser interactions, test web pages and work with Playwright tests.',
+    category:    'Frontend',
+    tags:        ['playwright', 'browser', 'testing', 'automation', 'e2e', 'web'],
+    icon:        '🎭',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: playwright-cli
+description: Automate browser interactions, test web pages and work with Playwright tests.
+allowed-tools: Bash(playwright-cli:*) Bash(npx:*) Bash(npm:*)
+---
+
+# Browser Automation with playwright-cli
+
+## Quick start
+
+\`\`\`bash
+# open new browser
+playwright-cli open
+# navigate to a page
+playwright-cli goto https://playwright.dev
+# interact with the page using refs from the snapshot
+playwright-cli click e15
+playwright-cli type "page.click"
+playwright-cli press Enter
+# take a screenshot (rarely used, as snapshot is more common)
+playwright-cli screenshot
+# close the browser
+playwright-cli close
+\`\`\`
+
+## Commands
+
+### Core
+
+\`\`\`bash
+playwright-cli open
+# open and navigate right away
+playwright-cli open https://example.com/
+playwright-cli goto https://playwright.dev
+playwright-cli type "search query"
+playwright-cli click e3
+playwright-cli dblclick e7
+# --submit presses Enter after filling the element
+playwright-cli fill e5 "user@example.com"  --submit
+playwright-cli drag e2 e8
+# drop files or data onto an element (from outside the page)
+playwright-cli drop e4 --path=./image.png
+playwright-cli drop e4 --data="text/plain=hello world"
+playwright-cli hover e4
+playwright-cli select e9 "option-value"
+playwright-cli upload ./document.pdf
+playwright-cli check e12
+playwright-cli uncheck e12
+playwright-cli snapshot
+playwright-cli eval "document.title"
+playwright-cli eval "el => el.textContent" e5
+# get element id, class, or any attribute not visible in the snapshot
+playwright-cli eval "el => el.id" e5
+playwright-cli eval "el => el.getAttribute('data-testid')" e5
+playwright-cli dialog-accept
+playwright-cli dialog-accept "confirmation text"
+playwright-cli dialog-dismiss
+playwright-cli resize 1920 1080
+playwright-cli close
+\`\`\`
+
+### Navigation
+
+\`\`\`bash
+playwright-cli go-back
+playwright-cli go-forward
+playwright-cli reload
+\`\`\`
+
+### Keyboard
+
+\`\`\`bash
+playwright-cli press Enter
+playwright-cli press ArrowDown
+playwright-cli keydown Shift
+playwright-cli keyup Shift
+\`\`\`
+
+### Mouse
+
+\`\`\`bash
+playwright-cli mousemove 150 300
+playwright-cli mousedown
+playwright-cli mousedown right
+playwright-cli mouseup
+playwright-cli mouseup right
+playwright-cli mousewheel 0 100
+\`\`\`
+
+### Save as
+
+\`\`\`bash
+playwright-cli screenshot
+playwright-cli screenshot e5
+playwright-cli screenshot --filename=page.png
+playwright-cli pdf --filename=page.pdf
+\`\`\`
+
+### Tabs
+
+\`\`\`bash
+playwright-cli tab-list
+playwright-cli tab-new
+playwright-cli tab-new https://example.com/page
+playwright-cli tab-close
+playwright-cli tab-close 2
+playwright-cli tab-select 0
+\`\`\`
+
+### Storage
+
+\`\`\`bash
+playwright-cli state-save
+playwright-cli state-save auth.json
+playwright-cli state-load auth.json
+
+# Cookies
+playwright-cli cookie-list
+playwright-cli cookie-list --domain=example.com
+playwright-cli cookie-get session_id
+playwright-cli cookie-set session_id abc123
+playwright-cli cookie-set session_id abc123 --domain=example.com --httpOnly --secure
+playwright-cli cookie-delete session_id
+playwright-cli cookie-clear
+
+# LocalStorage
+playwright-cli localstorage-list
+playwright-cli localstorage-get theme
+playwright-cli localstorage-set theme dark
+playwright-cli localstorage-delete theme
+playwright-cli localstorage-clear
+
+# SessionStorage
+playwright-cli sessionstorage-list
+playwright-cli sessionstorage-get step
+playwright-cli sessionstorage-set step 3
+playwright-cli sessionstorage-delete step
+playwright-cli sessionstorage-clear
+\`\`\`
+
+### Network
+
+\`\`\`bash
+playwright-cli route "**/*.jpg" --status=404
+playwright-cli route "https://api.example.com/**" --body='{"mock": true}'
+playwright-cli route-list
+playwright-cli unroute "**/*.jpg"
+playwright-cli unroute
+\`\`\`
+
+### DevTools
+
+\`\`\`bash
+playwright-cli console
+playwright-cli console warning
+playwright-cli requests
+playwright-cli request 5
+playwright-cli run-code "async page => await page.context().grantPermissions(['geolocation'])"
+playwright-cli run-code --filename=script.js
+playwright-cli tracing-start
+playwright-cli tracing-stop
+playwright-cli video-start video.webm
+playwright-cli video-chapter "Chapter Title" --description="Details" --duration=2000
+playwright-cli video-stop
+
+# launch the dashboard for UI review / design feedback — user annotates the page, you receive the annotated screenshot, snapshot, and notes
+playwright-cli show --annotate
+
+# generate a Playwright locator for an element from its ref or selector
+playwright-cli generate-locator e5 --raw
+
+# show a persistent highlight overlay for an element, optionally with a custom style
+playwright-cli highlight e5
+playwright-cli highlight e5 --style="outline: 3px dashed red"
+# hide a single element highlight, or all page highlights when no target is given
+playwright-cli highlight e5 --hide
+playwright-cli highlight --hide
+\`\`\`
+
+## Raw output
+
+The global \`--raw\` option strips page status, generated code, and snapshot sections from the output, returning only the result value. Use it to pipe command output into other tools. Commands that don't produce output return nothing.
+
+\`\`\`bash
+playwright-cli --raw eval "JSON.stringify(performance.timing)" | jq '.loadEventEnd - .navigationStart'
+playwright-cli --raw eval "JSON.stringify([...document.querySelectorAll('a')].map(a => a.href))" > links.json
+playwright-cli --raw snapshot > before.yml
+playwright-cli click e5
+playwright-cli --raw snapshot > after.yml
+diff before.yml after.yml
+TOKEN=$(playwright-cli --raw cookie-get session_id)
+playwright-cli --raw localstorage-get theme
+\`\`\`
+
+For structured output wrapping every reply as JSON, pass --json
+\`\`\`bash
+playwright-cli list --json
+\`\`\`
+
+## Open parameters
+\`\`\`bash
+# Use specific browser when creating session
+playwright-cli open --browser=chrome
+playwright-cli open --browser=firefox
+playwright-cli open --browser=webkit
+playwright-cli open --browser=msedge
+
+# Use persistent profile (by default profile is in-memory)
+playwright-cli open --persistent
+# Use persistent profile with custom directory
+playwright-cli open --profile=/path/to/profile
+
+# Connect to browser via Playwright Extension
+playwright-cli attach --extension=chrome
+
+# Connect to a running Chrome or Edge by channel name
+playwright-cli attach --cdp=chrome
+playwright-cli attach --cdp=msedge
+
+# Connect to a running browser via CDP endpoint
+playwright-cli attach --cdp=http://localhost:9222
+
+# Start with config file
+playwright-cli open --config=my-config.json
+
+# Close the browser
+playwright-cli close
+# Detach from an attached browser (leaves the external browser running)
+playwright-cli -s=msedge detach
+# Delete user data for the default session
+playwright-cli delete-data
+\`\`\`
+
+## Snapshots
+
+After each command, playwright-cli provides a snapshot of the current browser state.
+
+\`\`\`bash
+> playwright-cli goto https://example.com
+### Page
+- Page URL: https://example.com/
+- Page Title: Example Domain
+### Snapshot
+[Snapshot](.playwright-cli/page-2026-02-14T19-22-42-679Z.yml)
+\`\`\`
+
+You can also take a snapshot on demand using \`playwright-cli snapshot\` command. All the options below can be combined as needed.
+
+\`\`\`bash
+# default - save to a file with timestamp-based name
+playwright-cli snapshot
+
+# save to file, use when snapshot is a part of the workflow result
+playwright-cli snapshot --filename=after-click.yaml
+
+# snapshot an element instead of the whole page
+playwright-cli snapshot "#main"
+
+# limit snapshot depth for efficiency, take a partial snapshot afterwards
+playwright-cli snapshot --depth=4
+playwright-cli snapshot e34
+
+# include each element's bounding box as [box=x,y,width,height]
+playwright-cli snapshot --boxes
+\`\`\`
+
+## Targeting elements
+
+By default, use refs from the snapshot to interact with page elements.
+
+\`\`\`bash
+# get snapshot with refs
+playwright-cli snapshot
+
+# interact using a ref
+playwright-cli click e15
+\`\`\`
+
+You can also use css selectors or Playwright locators.
+
+\`\`\`bash
+# css selector
+playwright-cli click "#main > button.submit"
+
+# role locator
+playwright-cli click "getByRole('button', { name: 'Submit' })"
+
+# test id
+playwright-cli click "getByTestId('submit-button')"
+\`\`\`
+
+## Browser Sessions
+
+\`\`\`bash
+# create new browser session named "mysession" with persistent profile
+playwright-cli -s=mysession open example.com --persistent
+# same with manually specified profile directory (use when requested explicitly)
+playwright-cli -s=mysession open example.com --profile=/path/to/profile
+playwright-cli -s=mysession click e6
+playwright-cli -s=mysession close  # stop a named browser
+playwright-cli -s=mysession delete-data  # delete user data for persistent session
+
+playwright-cli list
+# Close all browsers
+playwright-cli close-all
+# Forcefully kill all browser processes
+playwright-cli kill-all
+\`\`\`
+
+## Installation
+
+If global \`playwright-cli\` command is not available, try a local version via \`npx playwright-cli\`:
+
+\`\`\`bash
+npx --no-install playwright-cli --version
+\`\`\`
+
+When local version is available, use \`npx playwright-cli\` in all commands. Otherwise, install \`playwright-cli\` as a global command:
+
+\`\`\`bash
+npm install -g @playwright/cli@latest
+\`\`\`
+
+## Example: Form submission
+
+\`\`\`bash
+playwright-cli open https://example.com/form
+playwright-cli snapshot
+
+playwright-cli fill e1 "user@example.com"
+playwright-cli fill e2 "password123"
+playwright-cli click e3
+playwright-cli snapshot
+playwright-cli close
+\`\`\`
+
+## Example: Multi-tab workflow
+
+\`\`\`bash
+playwright-cli open https://example.com
+playwright-cli tab-new https://example.com/other
+playwright-cli tab-list
+playwright-cli tab-select 0
+playwright-cli snapshot
+playwright-cli close
+\`\`\`
+
+## Example: Debugging with DevTools
+
+\`\`\`bash
+playwright-cli open https://example.com
+playwright-cli click e4
+playwright-cli fill e7 "test"
+playwright-cli console
+playwright-cli requests
+playwright-cli close
+\`\`\`
+
+\`\`\`bash
+playwright-cli open https://example.com
+playwright-cli tracing-start
+playwright-cli click e4
+playwright-cli fill e7 "test"
+playwright-cli tracing-stop
+playwright-cli close
+\`\`\`
+
+## Example: Interactive session
+
+Ask the user for UI review or design feedback. The user draws boxes on the live page and types comments; you receive the annotated screenshot, the snapshot of the marked region, and the user's notes. Use this whenever the user asks for "UI review", "design feedback", or to "ask the user what they think / want / mean":
+
+\`\`\`bash
+playwright-cli open https://example.com
+playwright-cli show --annotate
+\`\`\`
+
+## Specific tasks
+
+* **Running and Debugging Playwright tests** [references/playwright-tests.md](references/playwright-tests.md)
+* **Request mocking** [references/request-mocking.md](references/request-mocking.md)
+* **Running Playwright code** [references/running-code.md](references/running-code.md)
+* **Browser session management** [references/session-management.md](references/session-management.md)
+* **Spec-driven testing (plan / generate / heal)** [references/spec-driven-testing.md](references/spec-driven-testing.md)
+* **Storage state (cookies, localStorage)** [references/storage-state.md](references/storage-state.md)
+* **Test generation** [references/test-generation.md](references/test-generation.md)
+* **Tracing** [references/tracing.md](references/tracing.md)
+* **Video recording** [references/video-recording.md](references/video-recording.md)
+* **Inspecting element attributes** [references/element-attributes.md](references/element-attributes.md)
+`
+  },
+
+  // ── ESP32 Firmware ──
+  {
+    id:          'esp32-firmware',
+    name:        'ESP32 Firmware',
+    description: 'Develop, build, flash, and debug ESP32 firmware using PlatformIO and Arduino framework. Covers board bring-up, LVGL UI, peripherals, and production workflows with hard-won lessons. TRIGGER: user says "esp32", "platformio", "arduino firmware", "flash esp32", "lvgl", "esp32 firmware", or "microcontroller firmware".',
+    category:    'Hardware',
+    tags:        ['esp32', 'platformio', 'arduino', 'firmware', 'lvgl', 'microcontroller'],
+    icon:        '📟',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: esp32-firmware
+description: >
+  Develop, build, flash, and debug ESP32 firmware using PlatformIO and Arduino framework.
+  Covers board bring-up, LVGL UI, peripherals, and production workflows with hard-won lessons.
+  TRIGGER: user says "esp32", "platformio", "arduino firmware", "flash esp32",
+  "lvgl", "esp32 firmware", or "microcontroller firmware".
+---
+
+# ESP32 Firmware Development Skill
+
+> **Purpose**: Guide for an AI agent to develop, build, flash, and debug ESP32 firmware using PlatformIO + Arduino framework. Covers board bring-up, LVGL UI, peripherals, and production workflows. Includes hard-won lessons from real hardware.
+
+---
+
+## Table of Contents
+
+1. [Workflow Checklist](#workflow-checklist)
+2. [Environment & Tools](#environment--tools)
+3. [PlatformIO Configuration](#platformio-configuration)
+4. [Board Definitions](#board-definitions)
+5. [LVGL Integration](#lvgl-integration)
+6. [Display (SPI LCD)](#display-spi-lcd)
+7. [Touch Input](#touch-input)
+8. [IMU / I2C Sensors](#imu--i2c-sensors)
+9. [Camera](#camera)
+10. [WiFi & Web Server](#wifi--web-server)
+11. [SD Card](#sd-card)
+12. [Build & Flash Workflow](#build--flash-workflow)
+13. [Serial Monitor Tips](#serial-monitor-tips)
+14. [Lessons Learned](#lessons-learned)
+
+---
+
+## Workflow Checklist
+
+### Phase 1 — Board Bring-up
+- [ ] Identify board on USB (VID/PID, COM port)
+- [ ] Create PlatformIO project with correct board definition
+- [ ] Flash minimal "alive" test (Serial + LED/backlight)
+- [ ] Verify serial output — no boot loop
+- [ ] **Gate**: Board boots and prints to serial
+
+### Phase 2 — Display
+- [ ] Init SPI bus and LCD driver (ST7789, ILI9341, etc.)
+- [ ] Fill screen with solid color
+- [ ] Draw text with GFX library
+- [ ] **Gate**: Visual output on screen
+
+### Phase 3 — LVGL + Touch
+- [ ] Add LVGL library with \`lv_conf.h\`
+- [ ] Create display flush callback
+- [ ] Create touch read callback
+- [ ] Verify touch coordinates map correctly
+- [ ] **Gate**: LVGL label visible, touch events work
+
+### Phase 4 — Peripherals
+- [ ] I2C bus scan — identify devices
+- [ ] Initialize sensors (IMU, touch, etc.)
+- [ ] Camera init (if present)
+- [ ] SD card mount (if present)
+- [ ] WiFi connect
+- [ ] **Gate**: All peripherals responding
+
+### Phase 5 — Application UI
+- [ ] Create tabbed UI or navigation structure
+- [ ] Wire live data to UI labels
+- [ ] Add interactive widgets (buttons, switches)
+- [ ] **Gate**: Functional interactive UI
+
+---
+
+## Environment & Tools
+
+- **PlatformIO** (VS Code extension or CLI)
+- **Framework**: Arduino (simpler) or ESP-IDF (more control)
+- **Platform**: \`espressif32\` (check version — affects Arduino core)
+  - \`espressif32@6.x\` → Arduino core 2.x (ESP-IDF 4.x) — PSRAM OPI broken on S3 rev v0.2
+  - **pioarduino** (RECOMMENDED) → Arduino core 3.3.7 + ESP-IDF 5.5.2 — PSRAM OPI works
+    - \`platform = https://github.com/pioarduino/platform-espressif32/releases/download/stable/platform-espressif32.zip\`
+    - Community fork, actively maintained, packages ESP-IDF 5.x for PlatformIO
+- **Python venv**: At \`env/\` in workspace root — always activate for any Python work
+
+---
+
+## PlatformIO Configuration
+
+### Minimal \`platformio.ini\` for ESP32-S3
+
+\`\`\`ini
+[env:esp32s3]
+platform = espressif32
+board = esp32-s3-devkitc-1
+framework = arduino
+
+build_flags =
+    -DARDUINO_USB_MODE=1        ; Native USB
+    -DARDUINO_USB_CDC_ON_BOOT=1 ; Serial over USB
+    -DBOARD_HAS_PSRAM           ; Enable PSRAM (if board has it)
+    -DLV_CONF_INCLUDE_SIMPLE    ; LVGL config
+    -DLV_LVGL_H_INCLUDE_SIMPLE
+
+monitor_speed = 115200
+upload_port = COM5
+monitor_port = COM5
+
+lib_deps =
+    moononournation/GFX Library for Arduino@1.4.9
+    lvgl/lvgl@^8.4.0
+\`\`\`
+
+### Source file filtering
+
+\`\`\`ini
+; Include all subdirectories
+build_src_filter = +<*> +<app/*> +<ui/*> +<ui/tabs/*>
+
+; Or compile only one file for debugging
+build_src_filter = +<main.cpp>
+\`\`\`
+
+**Note**: Use \`build_src_filter\`, NOT \`src_filter\` (deprecated).
+
+---
+
+## Board Definitions
+
+### Waveshare ESP32-S3-Touch-LCD-2 (SKU 29667)
+
+| Feature | Details |
+|---------|---------|
+| MCU | ESP32-S3R8 (dual-core LX7, 240MHz) |
+| Flash | 16MB |
+| PSRAM | 8MB (OPI) |
+| LCD | 2" IPS 240×320, ST7789T3 (SPI) |
+| Touch | CST816D capacitive (I2C, addr 0x15) |
+| IMU | QMI8658 6-axis (I2C, addr 0x6B) |
+| Camera | 24-pin FPC for OV2640/OV5640 (8-bit parallel) |
+| SD | TF card (SPI, shared bus with LCD) |
+| Battery | JST 1.25mm LiPo, ADC on GPIO5 |
+| USB | USB-C (native USB OTG) |
+
+#### Pin Map
+
+\`\`\`
+LCD SPI:    SCLK=39, MOSI=38, MISO=40, DC=42, CS=45, RST=-1, BL=1
+I2C Bus:    SDA=48, SCL=47 (touch + IMU shared)
+SD Card:    CS=41 (shared SPI bus: SCLK=39, MOSI=38, MISO=40)
+Camera:     PWDN=17, RESET=-1, XCLK=8
+            SIOD=21, SIOC=16  (SEPARATE I2C from main bus!)
+            Y9=2, Y8=7, Y7=10, Y6=14, Y5=11, Y4=15, Y3=13, Y2=12
+            VSYNC=6, HREF=4, PCLK=9
+Battery:    ADC on GPIO5
+\`\`\`
+
+**Critical**: Camera SCCB (GPIO 21/16) is on a **separate I2C bus** from the main I2C (GPIO 48/47). Do NOT mix them.
+
+#### Reference Demo
+
+Official Waveshare demo ZIP: \`https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-2/ESP32-S3-Touch-LCD-2-Demo.zip\`
+
+Contains 10 Arduino examples + libraries. Download to \`$env:TEMP\\ws-demo\` and extract. Key files for pin reference:
+- \`bsp_spi.h\`, \`bsp_i2c.h\`, \`bsp_lv_port.h\`, \`app_camera.h\`, \`app_system.h\`
+
+---
+
+## LVGL Integration
+
+### lv_conf.h Location
+
+Place in \`include/lv_conf.h\`. PlatformIO finds it via \`-DLV_CONF_INCLUDE_SIMPLE\`.
+
+**IMPORTANT**: After changing \`lv_conf.h\`, you MUST do \`pio run -t clean\` then rebuild. The LVGL library caches compiled objects and won't pick up config changes without a clean build.
+
+### Font Gotcha
+
+The default \`lv_conf.h\` only enables \`lv_font_montserrat_14\`. If you reference \`lv_font_montserrat_20\` etc., you must enable them in \`lv_conf.h\` AND do a clean rebuild. If you get \`undefined reference to lv_font_montserrat_XX\`, this is why.
+
+### LVGL Buffer Strategy
+
+\`\`\`cpp
+// With PSRAM — full-frame double buffer (best performance)
+lv_color_t *buf1 = (lv_color_t *)heap_caps_malloc(W * H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
+lv_color_t *buf2 = (lv_color_t *)heap_caps_malloc(W * H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
+
+// Without PSRAM — small internal buffer (still works, just slower)
+lv_color_t *buf1 = (lv_color_t *)heap_caps_malloc(W * 40 * sizeof(lv_color_t), MALLOC_CAP_INTERNAL);
+\`\`\`
+
+### LVGL Task Pattern
+
+Run LVGL on a dedicated FreeRTOS task pinned to core 1:
+
+\`\`\`cpp
+static void lvgl_task(void *param) {
+    while (1) {
+        uint32_t ms = lv_timer_handler();
+        vTaskDelay(pdMS_TO_TICKS(ms < 5 ? 5 : ms > 500 ? 500 : ms));
+    }
+}
+xTaskCreatePinnedToCore(lvgl_task, "lvgl", 10240, NULL, 5, NULL, 1);
+\`\`\`
+
+Always protect LVGL API calls with a mutex:
+\`\`\`cpp
+if (lvgl_lock(-1)) {
+    // ... LVGL calls ...
+    lvgl_unlock();
+}
+\`\`\`
+
+---
+
+## Display (SPI LCD)
+
+### Arduino_GFX pattern (GFX Library for Arduino)
+
+\`\`\`cpp
+#include <Arduino_GFX_Library.h>
+
+// Create in setup(), NOT as globals (crashes on Arduino core 2.x!)
+Arduino_DataBus *bus = new Arduino_ESP32SPI(DC, CS, SCLK, MOSI, MISO);
+Arduino_GFX *gfx = new Arduino_ST7789(bus, RST, ROTATION, true /*IPS*/, W, H);
+
+gfx->begin();
+gfx->fillScreen(0x0000);   // BLACK — use literal 0x0000 (GFX 1.6.x removed named constant)
+pinMode(BL_PIN, OUTPUT);
+digitalWrite(BL_PIN, HIGH);
+\`\`\`
+
+**CRITICAL (Arduino Core 3.x):** Do NOT call \`SPIClass::begin()\` before \`gfx->begin()\`. On Core 3.x the GFX library's \`Arduino_ESP32SPI\` claims the FSPI bus exclusively — pre-initializing the bus causes \`gfx->begin()\` to deadlock. Only create the SPI mutex in \`bsp_spi_init()\`; let the GFX library handle actual bus initialization.
+
+### GFX Library Version Compatibility
+
+| GFX Version | Arduino Core | Notes |
+|-------------|-------------|-------|
+| 1.4.9 | 2.x (espressif32@6.x) | Stable, pin this version |
+| 1.5.x+ | 3.x required | API changes, new ESP-IDF |
+| 1.6.x | 3.x (pioarduino) | Works — \`BLACK\` constant removed, use \`0x0000\` |
+
+---
+
+## Touch Input
+
+### CST816D (I2C capacitive touch)
+
+Library: \`bsp_cst816\` (copy from Waveshare demo into \`lib/\`)
+
+\`\`\`cpp
+#include "bsp_cst816.h"
+bsp_touch_init(&Wire, rotation, width, height);  // Call after Wire.begin()
+bsp_touch_read();
+uint16_t x, y;
+if (bsp_touch_get_coordinates(&x, &y)) {
+    // Touch detected at (x, y)
+}
+\`\`\`
+
+---
+
+## Build & Flash Workflow
+
+### Standard Build-Flash-Monitor Cycle
+
+\`\`\`powershell
+# Build
+pio run *>&1 | Out-File build-result.log -Encoding ascii
+
+# Check result
+Select-String -Path build-result.log -Pattern "error:|SUCCESS|FAILED|RAM:|Flash:"
+
+# Flash (ensure no serial monitor is holding the port!)
+pio run -t upload
+
+# Monitor
+pio device monitor --filter=direct
+\`\`\`
+
+### Killing Stuck Serial Monitors
+
+Serial monitor processes hold COM port. Find and kill them before uploading:
+
+\`\`\`powershell
+Get-Process python* | ForEach-Object {
+    $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine
+    if ($cmd -match "monitor") { Stop-Process -Id $_.Id -Force }
+}
+\`\`\`
+
+### Clean Build (when changing lv_conf.h or build flags)
+
+\`\`\`powershell
+pio run -t clean
+pio run
+\`\`\`
+
+---
+
+## Serial Monitor Tips
+
+- Use \`pio device monitor --filter=direct\` for raw output
+- Accumulated terminal history pollutes output — use background terminals or write to log files
+- After flash, board resets automatically. Add \`delay(2000)\` before first \`Serial.println()\` to catch output
+- Boot loop signature: \`rst:0x3 (RTC_SW_SYS_RST)\` repeating = crash before setup()
+
+---
+
+## Lessons Learned
+
+### CRITICAL: No Global \`new\` for Hardware Objects on Arduino Core 2.x
+
+**Problem**: Code like this crashes with a boot loop:
+\`\`\`cpp
+// CRASHES on Arduino core 2.x — static init runs before hardware ready
+Arduino_DataBus *bus = new Arduino_ESP32SPI(...);
+Arduino_GFX *gfx = new Arduino_ST7789(...);
+\`\`\`
+
+**Fix**: Declare as \`nullptr\`, construct in \`setup()\`:
+\`\`\`cpp
+Arduino_DataBus *bus = nullptr;
+Arduino_GFX *gfx = nullptr;
+
+void setup() {
+    bus = new Arduino_ESP32SPI(...);
+    gfx = new Arduino_ST7789(bus, ...);
+}
+\`\`\`
+
+The Waveshare demos use global \`new\` because they target Arduino core 3.x. On PlatformIO espressif32@6.x (core 2.x), defer all hardware object construction to \`setup()\`.
+
+### UART Audio Bridge Between Two ESP32 Boards (Breadboard)
+
+Sending PCM audio from one ESP32 to another over UART on breadboard wires. Hard-won BKM:
+
+**Working config:**
+- **460800 baud** — 921600 causes 37-50% CRC errors on breadboard (capacitance/crosstalk)
+- **Binary framed** protocol with CRC8: \`[0xAA][0x55][CMD][LEN_LO][LEN_HI][PAYLOAD][CRC8]\`
+- **256-byte frames** with \`flush()\` + \`delayMicroseconds(800)\` between frames
+- **Buffer-all-then-play** — NOT streaming. Sender transmits all data, then receiver plays from buffer
+- **2:1 decimation on sender** (24kHz→12kHz) — halves data to fit in RAM-constrained receiver
+
+**Why streaming fails at 460800:**
+460800 raw throughput = 46,080 B/s. I2S at 24kHz/16-bit needs 48,000 B/s. With protocol overhead + pacing delay, effective ~39 KB/s. Ring buffer drains faster than it fills → underruns → noise/clicks even with zero CRC errors.
+
+**Why 921600 fails on breadboard:**
+Breadboard jumper wires have high capacitance and crosstalk at near-MHz signaling rates. Every test at 921600 produced 37-50% frame CRC errors. Every test at 460800 produced zero CRC errors.
+
+**Capacity:** ~101KB buffer on ESP32-D0WD-V3 (no PSRAM) = 4.2 sec speech at 12kHz/16-bit. 12kHz speech quality is excellent (better than telephone).
+
+**Key pattern — sender decimation:**
+\`\`\`cpp
+// In sender's play_pcm(): take every other sample for 2:1 downsampling
+const int16_t *samples = (const int16_t *)data;
+for (size_t i = 0; i < total_samples; i += 2) {
+    chunk_buf[pos++] = samples[i] & 0xFF;
+    chunk_buf[pos++] = (uint16_t)samples[i] >> 8;
+}
+// Report halved sample rate to receiver: audio_start(sample_rate / 2, 16, 1)
+\`\`\`
+
+### PSRAM Detection on ESP32-S3
+
+The \`esp32-s3-devkitc-1\` board definition defaults to "No PSRAM". Adding \`-DBOARD_HAS_PSRAM\` alone isn't enough — the board's \`board_build.arduino.memory_type\` must be set for OPI PSRAM. This is a PlatformIO board config issue, not a code issue.
+
+### LVGL lv_conf.h Not Propagated to Libraries
+
+PlatformIO may not include the project's \`include/\` directory when compiling the LVGL library. After changing \`lv_conf.h\`, always do a \`pio run -t clean\` to force full recompilation. Look for \`undefined reference to lv_font_*\` as the telltale sign.
+
+### SPI Bus Sharing (LCD + SD Card)
+
+The LCD and SD card share SPI pins (SCLK, MOSI, MISO) with separate CS lines. Use a mutex to prevent concurrent access:
+\`\`\`cpp
+if (bsp_spi_lock(-1)) {
+    // Access LCD or SD...
+    bsp_spi_unlock();
+}
+\`\`\`
+
+### Camera SCCB is Separate I2C
+
+The camera's SCCB interface (GPIO 21/16) is NOT on the main I2C bus (GPIO 48/47). Do not call \`Wire.begin()\` on camera pins — the camera driver handles its own I2C internally.
+
+### Terminal History Pollution
+
+PlatformIO terminals accumulate output across multiple commands. When running builds in a shared terminal, old errors appear alongside new output. Workarounds:
+- Use \`*>&1 | Out-File build.log\` and read the log file
+- Use background terminals (\`isBackground: true\`) for builds
+- Grep build logs for \`SUCCESS|FAILED|error:\` to find actual result
+
+### Board Boots But Screen Black
+
+If serial prints work but display is black:
+1. Check backlight pin — \`pinMode(BL, OUTPUT); digitalWrite(BL, HIGH);\`
+2. Check SPI pin assignments match the board
+3. Verify GFX library version is compatible with Arduino core version
+4. Confirm \`gfx->begin()\` returns true
+
+### Boot Loop Diagnosis
+
+\`rst:0x3 (RTC_SW_SYS_RST)\` repeating = watchdog reset from crash.
+Common causes:
+1. Global \`new\` of SPI/I2C objects (see above)
+2. 16MB flash config with wrong bootloader
+3. PSRAM init failure with PSRAM-dependent code
+4. Stack overflow in a task
+
+**Debug strategy**: Strip to absolute minimum \`setup()\`, confirm it boots, then add one thing at a time.
+
+### pioarduino Migration (espressif32@6.x → pioarduino)
+
+**When**: You need PSRAM OPI on ESP32-S3 rev v0.2, or want ESP-IDF 5.x features.
+
+**Steps**:
+1. Change \`platform\` in platformio.ini to pioarduino URL
+2. Add \`board_build.arduino.memory_type = dio_opi\` and \`board_build.flash_mode = dio\`
+3. Remove \`esp32-camera\` from lib_deps (built into ESP-IDF 5.x)
+4. Unpin GFX version (1.4.9 → latest, currently 1.6.5)
+5. Add \`-I include\` to build_flags (lv_conf.h path fix for LVGL)
+6. Fix \`BLACK\` → \`0x0000\` in any \`gfx->fillScreen(BLACK)\` calls
+7. Do \`pio run -t erase\` before first upload (flash layout changed)
+8. Set \`$env:PYTHONIOENCODING="utf-8"\` before upload on Windows (esptool encoding fix)
+
+**Result**: 8189K PSRAM available, 256K heap, all libraries compile cleanly.
+
+### pioarduino Python Environment Issues
+
+pioarduino's PlatformIO penv uses \`uv\` package manager. If dependencies break:
+\`\`\`powershell
+cd $env:USERPROFILE\\.platformio\\penv
+.\\Scripts\\uv.exe pip install platformio@https://github.com/pioarduino/platformio-core/archive/refs/heads/develop.zip
+.\\Scripts\\uv.exe pip install littlefs-python fatfs-ng pyyaml rich-click zopfli intelhex rich "urllib3<2" "cryptography>=45.0.3" "marshmallow>=3,<4"
+\`\`\`
+
+### esptool Upload Encoding Error on Windows
+
+**Symptom**: \`UnicodeEncodeError: 'charmap' codec can't encode characters\` during upload.
+**Fix**: Set \`$env:PYTHONIOENCODING="utf-8"\` in the terminal before running \`pio run -t upload\`.
+Note: \`chcp 65001\` alone is NOT sufficient — the env var must be set for the Python process.
+
+---
+
+## Project Structure Template
+
+\`\`\`
+firmware/<project-name>/
+├── platformio.ini
+├── include/
+│   ├── pins.h          # All GPIO pin definitions
+│   └── lv_conf.h       # LVGL configuration
+├── src/
+│   ├── main.cpp        # Entry point: setup() + loop()
+│   ├── bsp_spi.cpp/h   # SPI bus init + mutex
+│   ├── bsp_i2c.cpp/h   # I2C bus init + mutex
+│   ├── bsp_lv_port.cpp/h  # LVGL display + touch drivers
+│   ├── app/
+│   │   ├── app_system.cpp/h   # System info (temp, battery, SD)
+│   │   ├── app_camera.cpp/h   # Camera capture
+│   │   ├── app_qmi8658.cpp/h  # IMU data
+│   │   └── app_wifi.cpp/h     # WiFi + web server
+│   └── ui/
+│       ├── ui.c/h        # UI init (creates tabview)
+│       └── tabs/
+│           ├── tabview.h       # Shared tab declarations
+│           ├── system_tab.c    # System info tab
+│           ├── camera_tab.c    # Camera preview tab
+│           ├── qmi8658_tab.c   # IMU data tab
+│           └── wifi_tab.c      # WiFi config tab
+└── lib/
+    ├── bsp_cst816/      # Touch driver (from Waveshare demo)
+    └── FastIMU/         # IMU driver (if not on PlatformIO registry)
+\`\`\`
+`
+  },
+
+  // ── KiCad Board Design ──
+  {
+    id:          'kicad-board-design',
+    name:        'KiCad Board Design',
+    description: 'Design PCBs from idea to production using KiCad 9.x. Covers S-expression file generation, CLI-driven ERC/DRC verification, schematic capture, footprint assignment, and board layout. TRIGGER: user says "kicad", "pcb design", "schematic", "board layout", "erc", "drc", "footprint", "gerber", "pcb", or "kicad-cli".',
+    category:    'Hardware',
+    tags:        ['kicad', 'pcb', 'schematic', 'drc', 'erc', 'gerber'],
+    icon:        '🔌',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: kicad-board-design
+description: >
+  Design PCBs from idea to production using KiCad 9.x. Covers S-expression file generation,
+  CLI-driven ERC/DRC verification, schematic capture, footprint assignment, and board layout.
+  TRIGGER: user says "kicad", "pcb design", "schematic", "board layout", "erc", "drc",
+  "footprint", "gerber", "pcb", or "kicad-cli".
+---
+
+# KiCad PCB Design  Complete Skill Reference
+
+> **Purpose**: Standalone guide for an AI agent to design PCBs from idea to production using KiCad 9.x, text-based S-expression file generation, and CLI-driven verification. Every section contains copy-paste-ready code, conventions, and hard-won lessons.
+
+---
+
+## Table of Contents
+
+1. [Master Workflow Checklist](#master-workflow-checklist)
+2. [Environment & Installation](#environment--installation)
+3. [KiCad File Formats](#kicad-file-formats)
+4. [Project Structure](#project-structure)
+5. [Schematic Design Workflow](#schematic-design-workflow)
+6. [Components Reference (THT)](#components-reference-tht)
+7. [ERC  Electrical Rules Check](#erc--electrical-rules-check)
+8. [PCB Layout Workflow](#pcb-layout-workflow)
+9. [Design Rules (JLCPCB)](#design-rules-jlcpcb)
+10. [Copper Trace Routing](#copper-trace-routing)
+11. [DRC  Design Rule Check](#drc--design-rule-check)
+12. [3D Models](#3d-models)
+13. [Production Output (Gerber/Drill)](#production-output-gerberdrill)
+14. [Manufacturer Ordering (JLCPCB)](#manufacturer-ordering-jlcpcb)
+15. [KiCad GUI Tips](#kicad-gui-tips)
+16. [Common Circuit References](#common-circuit-references)
+17. [Troubleshooting](#troubleshooting)
+18. [Lessons Learned](#lessons-learned)
+
+---
+
+## Master Workflow Checklist
+
+Follow these phases **in order** for every board. Each phase has a gate () that must pass before proceeding.
+
+> **GUI-First Principle**: For spatial tasks (component placement, trace routing, footprint swaps, courtyard fixes), **always ask the user to do it in KiCad's GUI first**. The interactive router (push-and-shove mode) and drag-to-place are dramatically faster than editing S-expressions programmatically. The agent should:
+> 1. Describe what needs to change (which components, which nets, target positions)
+> 2. Ask the user to make the change in KiCad
+> 3. Wait for the user to confirm completion
+> 4. Re-read the file and run DRC to verify
+>
+> Only fall back to programmatic S-expression editing when: the user explicitly asks for it, the change is purely additive (3D models, new footprints), or the change is a bulk find-replace (e.g. net renaming).
+
+### Phase 1  Project Setup
+- [ ] Create project directory: \`<project-name>/\`
+- [ ] Generate \`<name>.kicad_pro\` with design rules
+- [ ] Generate \`sym-lib-table\` and \`fp-lib-table\`
+- [ ] **Gate**: Files parse without error in KiCad
+
+### Phase 2  Schematic
+- [ ] Generate \`<name>.kicad_sch\` with all components, wires, power symbols
+- [ ] Add PWR_FLAG on every power net driven by passive-pin connectors
+- [ ] Add \`no_connect\` flags on unused pins
+- [ ] **Gate**: \`kicad-cli sch erc\`  0 errors
+
+### Phase 2.5  Wiring Report
+- [ ] Generate \`WIRING-REPORT.md\` in project directory
+- [ ] Include: GPIO assignment table, signal chain diagrams, pin defines for firmware
+- [ ] User reviews and confirms circuit correctness before proceeding to PCB
+- [ ] **Gate**: User confirms all connections match design intent
+
+### Phase 3  PCB Layout
+- [ ] Generate \`<name>.kicad_pcb\` with board outline, all footprints roughly placed
+- [ ] **Ask user to arrange components in KiCad GUI** (drag, rotate, align  much faster than scripting)
+- [ ] User confirms placement is done  agent re-reads file to sync positions
+- [ ] Verify no courtyard overlaps
+- [ ] **Gate**: \`kicad-cli pcb drc\`  0 errors (unconnected items expected at this stage)
+
+### Phase 4  Trace Routing
+- [ ] **Preferred: Ask user to route in KiCad GUI** (Interactive Router with push-and-shove mode)
+  - Provide a net-by-net routing guide (which pads to connect, suggested layers)
+  - User routes interactively  agent re-reads file and runs DRC to verify
+  - For simple boards, user can also use Freerouting (export DSN  import SES)
+- [ ] Fallback (programmatic): Extract pad positions, generate segment/via entries
+  - Only if user explicitly requests scripted routing
+  - Expect 35 DRC iterations per board
+- [ ] **Gate**: \`kicad-cli pcb drc\`  0 errors, 0 unconnected items
+
+### Phase 5  3D Models
+- [ ] Insert \`(model ...)\` blocks for every component footprint
+- [ ] User verifies in 3D Viewer (Alt+3)
+- [ ] **Gate**: DRC still clean after model insertion
+
+### Phase 6  Production Output
+- [ ] Generate Gerber files (9 layers + job file)
+- [ ] Generate Excellon drill file
+- [ ] Create ZIP archive for manufacturer upload
+- [ ] **Gate**: ZIP contains all required files, sizes are reasonable
+
+### Phase 7  Order
+- [ ] Upload ZIP to manufacturer (JLCPCB, PCBWay, etc.)
+- [ ] Review quoted specs match design intent
+- [ ] Place order
+
+---
+
+## Environment & Installation
+
+### KiCad 9.x on Windows
+\`\`\`
+Executable : %USERPROFILE%\\AppData\\Local\\Programs\\KiCad\\9.0\\bin\\kicad-cli.exe
+3D Models  : %USERPROFILE%\\AppData\\Local\\Programs\\KiCad\\9.0\\share\\kicad\\3dmodels\\
+Symbols    : %USERPROFILE%\\AppData\\Local\\Programs\\KiCad\\9.0\\share\\kicad\\symbols\\
+Footprints : %USERPROFILE%\\AppData\\Local\\Programs\\KiCad\\9.0\\share\\kicad\\footprints\\
+\`\`\`
+
+**KiCad is NOT on PATH.** Always use the full path or set it:
+\`\`\`powershell
+$kicadBin = "%USERPROFILE%\\AppData\\Local\\Programs\\KiCad\\9.0\\bin"
+$env:PATH += ";$kicadBin"
+\`\`\`
+
+### Detecting KiCad Installation
+\`\`\`powershell
+# Search common locations
+$locations = @(
+    "$env:LOCALAPPDATA\\Programs\\KiCad\\*\\bin\\kicad-cli.exe",
+    "$env:ProgramFiles\\KiCad\\*\\bin\\kicad-cli.exe"
+)
+$cli = Get-ChildItem $locations -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+if ($cli) { Write-Host "Found: $($cli.FullName)" }
+\`\`\`
+
+### CRITICAL: File Encoding
+**ALL KiCad files MUST be UTF-8 without BOM.** KiCad's parser rejects files that start with a byte-order mark.
+
+\`\`\`powershell
+# CORRECT  UTF-8 no BOM
+[System.IO.File]::WriteAllText($filePath, $content, (New-Object System.Text.UTF8Encoding $false))
+
+# WRONG  these add BOM or use wrong encoding
+Set-Content -Path $filePath -Value $content  # Adds BOM in PowerShell 5.1
+Out-File -FilePath $filePath -Encoding utf8   # Also adds BOM
+\`\`\`
+
+**Use this pattern for every file write in the entire workflow.**
+
+---
+
+## KiCad File Formats
+
+All KiCad 9.x files are **S-expression** text files.
+
+| File | Format Version | Purpose |
+|------|---------------|---------|
+| \`.kicad_pro\` | \`(kicad_sch (version 20231120))\` | Project settings, design rules |
+| \`.kicad_sch\` | \`(kicad_sch (version 20250114))\` | Schematic: symbols, wires, power |
+| \`.kicad_pcb\` | \`(kicad_pcb (version 20241229))\` | PCB: footprints, traces, zones |
+| \`sym-lib-table\` | \`(sym_lib_table ...)\` | Symbol library paths |
+| \`fp-lib-table\` | \`(fp_lib_table ...)\` | Footprint library paths |
+
+### UUID Generation
+Every element needs a unique UUID. Use:
+\`\`\`powershell
+(New-Guid).ToString()
+\`\`\`
+
+### S-expression Tips
+- KiCad reformats files on save (compact  multi-line). Parsers must handle both.
+- Coordinates are in **millimeters**.
+- Angles are in **degrees**, clockwise positive (screen Y-axis down).
+- Net numbers are assigned sequentially starting from 0 (unconnected).
+
+---
+
+## Project Structure
+
+\`\`\`
+<project-name>/
+ <name>.kicad_pro          # Project file with design rules
+ <name>.kicad_sch          # Schematic
+ <name>.kicad_pcb          # PCB layout + routing
+ sym-lib-table             # Symbol library references
+ fp-lib-table              # Footprint library references
+ output/
+    gerbers/
+        <name>-F_Cu.gtl        # Front copper
+        <name>-B_Cu.gbl        # Back copper
+        <name>-F_Mask.gts      # Front solder mask
+        <name>-B_Mask.gbs      # Back solder mask
+        <name>-F_SilkS.gto     # Front silkscreen
+        <name>-B_SilkS.gbo     # Back silkscreen
+        <name>-F_Paste.gtp     # Front paste
+        <name>-B_Paste.gbp     # Back paste
+        <name>-Edge_Cuts.gm1   # Board outline
+        <name>.drl             # Drill file (Excellon)
+        <name>-job.gbrjob      # Gerber job file
+    <name>-gerbers.zip        # Production ZIP
+\`\`\`
+
+---
+
+## Schematic Design Workflow
+
+### Step 1: Define the Circuit
+List all components with reference designators, values, and connections (netlist).
+
+### Step 2: Generate .kicad_sch
+
+**Skeleton**:
+\`\`\`
+(kicad_sch
+    (version 20250114)
+    (generator "copilot_gen")
+    (generator_version "1.0")
+    (uuid "<project-uuid>")
+    (paper "A4")
+
+    (lib_symbols
+        ... all symbol definitions embedded here ...
+    )
+
+    ... symbol instances (components placed on sheet) ...
+    ... wires connecting pins ...
+    ... power symbols (VCC, GND) ...
+    ... PWR_FLAG symbols ...
+    ... no_connect flags ...
+    ... labels ...
+
+    (sheet_instances
+        (path "/" (page "1"))
+    )
+)
+\`\`\`
+
+### Step 3: Place Components
+Each component is a \`(symbol ...)\` block:
+\`\`\`
+(symbol
+    (lib_id "Device:R")
+    (at X Y rotation)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (uuid "<uuid>")
+    (property "Reference" "R1" (at rx ry rot) (effects (font (size 1.27 1.27))))
+    (property "Value" "1k" (at vx vy rot) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
+        (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "<uuid>"))
+    (pin "2" (uuid "<uuid>"))
+    (instances (project "<name>" (path "/<project-uuid>" (reference "R1") (unit 1))))
+)
+\`\`\`
+
+### Step 4: Draw Wires
+\`\`\`
+(wire (pts (xy x1 y1) (xy x2 y2))
+    (stroke (width 0) (type default))
+    (uuid "<uuid>")
+)
+\`\`\`
+
+**Pin-to-wire alignment is CRITICAL**: Power symbol pins must touch wire endpoints exactly  no gaps, even 0.01mm.
+
+### Step 5: Add Power Symbols
+Use \`power:VCC\` and \`power:GND\` from the built-in power library. These symbols provide global net connections.
+
+### Step 6: Add PWR_FLAG (Required)
+**Every power net driven only by passive-pin connectors needs a PWR_FLAG.** Battery connectors and pin headers have passive pins that don't satisfy ERC's "power pin must be driven" requirement.
+
+PWR_FLAG symbol definition (embed in \`lib_symbols\`):
+\`\`\`
+(symbol "power:PWR_FLAG"
+    (power)
+    (pin_names (offset 0))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "#FLG" ...)
+    (property "Value" "PWR_FLAG" ...)
+    (symbol "PWR_FLAG_0_1"
+        (pin power_out line (at 0 0 90) (length 0)
+            (name "pwr" ...) (number "1" ...))
+    )
+)
+\`\`\`
+
+Place instances: \`#FLG01\` on VCC net, \`#FLG02\` on GND net.
+
+---
+
+## Components Reference (THT)
+
+Default to **through-hole (THT)** components for hobby projects.
+
+### Common Components
+
+| Component | Symbol Library | Footprint | Pin Count |
+|-----------|---------------|-----------|-----------|
+| Resistor | \`Device:R\` | \`Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal\` | 2 |
+| Capacitor (ceramic) | \`Device:C\` | \`Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm\` | 2 |
+| Capacitor (electrolytic) | \`Device:CP\` | \`Capacitor_THT:CP_Radial_D5.0mm_P2.50mm\` | 2 (polarized: + is pin 1) |
+| LED 5mm | \`Device:LED\` | \`LED_THT:LED_D5.0mm\` | 2 (A=pin 1, K=pin 2) |
+| Potentiometer | \`Device:R_Potentiometer\` | \`Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical\` | 3 (1=CCW, 2=wiper, 3=CW) |
+| NE555 Timer | \`Timer:NE555\` | \`Package_DIP:DIP-8_W7.62mm\` | 8 |
+| Pin Header 102 | \`Connector_Generic:Conn_01x02\` | \`Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical\` | 2 |
+| Mounting Hole 3.2mm | \`Mechanical:MountingHole\` | \`MountingHole:MountingHole_3.2mm_M3\` | 0 (NPTH) |
+
+### NE555 Pinout
+| Pin | Name | Function |
+|-----|------|----------|
+| 1 | GND | Ground |
+| 2 | TRIG | Trigger (< 1/3 VCC starts timing) |
+| 3 | OUT | Output |
+| 4 | RESET | Reset (active low, tie to VCC if unused) |
+| 5 | CTRL | Control voltage (bypass to GND with 10nF) |
+| 6 | THR | Threshold (> 2/3 VCC stops timing) |
+| 7 | DISCH | Discharge (open collector) |
+| 8 | VCC | Supply (4.516V) |
+
+### Footprint Pad Coordinates (Local, Before Rotation)
+
+| Footprint | Pad 1 | Pad 2 | Others |
+|-----------|-------|-------|--------|
+| DIP-8_W7.62mm | (0,0) | (0,2.54) | +2.54 each; right column at x=7.62 |
+| R_Axial_P10.16mm | (0,0) | (10.16,0) | |
+| CP_Radial_D5.0mm_P2.50mm | (0,0)+ | (2.5,0) | |
+| C_Disc_D5.0mm_P2.50mm | (0,0) | (2.5,0) | |
+| LED_D5.0mm | (0,0)A | (2.54,0)K | |
+| PinHeader_1x02_P2.54mm | (0,0) | (0,2.54) | |
+| Bourns_3296W_Vertical | (0,0) | (2.54,0) | (5.08,0) |
+
+---
+
+## ERC  Electrical Rules Check
+
+### Running ERC
+\`\`\`powershell
+& "$kicadBin\\kicad-cli.exe" sch erc --output output/erc-report.rpt "$projectDir\\$name.kicad_sch"
+Get-Content output/erc-report.rpt | Select-String "violations|Error|errors"
+\`\`\`
+
+### Common ERC Errors and Fixes
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| Power pin not connected | Pin not touching wire endpoint (even 0.01mm gap) | Add bridge wire segment |
+| Power pin not driven | No \`power_out\` pin on net | Add PWR_FLAG symbol to that net |
+| Symbol doesn't match library | Embedded symbol differs from installed lib | Cosmetic warning  safe to ignore |
+| Library not configured | \`lib_name\` empty in embedded symbols | Create sym-lib-table or ignore |
+
+### ERC Severity
+- **Error**: Must fix before PCB layout
+- **Warning**: Review, generally safe to proceed
+- **Excluded**: Manually suppressed
+
+### ERC Best Practices
+1. Power symbol pins must touch wires **exactly**
+2. Every power net needs PWR_FLAG when driven by passive connectors
+3. Unused pins need \`no_connect\` flags
+4. Create empty \`sym-lib-table\` to suppress "library not configured" warnings
+5. Always re-run ERC after fixes  verify 0 errors before proceeding
+
+---
+
+## PCB Layout Workflow
+
+### Step 1: Generate .kicad_pcb
+
+**Skeleton**:
+\`\`\`
+(kicad_pcb
+    (version 20241229)
+    (generator "copilot_gen")
+    (generator_version "1.0")
+    (general (thickness 1.6) (legacy_teardrops no))
+    (paper "A4")
+    (layers
+        (0 "F.Cu" signal)
+        (31 "B.Cu" signal)
+        (32 "B.Adhes" user "B.Adhesive")
+        (33 "F.Adhes" user "F.Adhesive")
+        (34 "B.Paste" user)
+        (35 "F.Paste" user)
+        (36 "B.SilkS" user "B.Silkscreen")
+        (37 "F.SilkS" user "F.Silkscreen")
+        (38 "B.Mask" user "B.Mask")
+        (39 "F.Mask" user "F.Mask")
+        (40 "Dwgs.User" user "User.Drawings")
+        (41 "Cmts.User" user "User.Comments")
+        (42 "Eco1.User" user "User.Eco1")
+        (43 "Eco2.User" user "User.Eco2")
+        (44 "Edge.Cuts" user)
+        (45 "Margin" user)
+        (46 "B.CrtYd" user "B.Courtyard")
+        (47 "F.CrtYd" user "F.Courtyard")
+        (48 "B.Fab" user "B.Fabrication")
+        (49 "F.Fab" user "F.Fabrication")
+        (50 "User.1" user)
+        (51 "User.2" user)
+    )
+    (setup
+        (pad_to_mask_clearance 0)
+        (allow_soldermask_bridges_in_footprints no)
+        (pcbplotparams ...)
+    )
+    (net 0 "")
+    (net 1 "VCC")
+    (net 2 "GND")
+    ... more nets ...
+
+    ... footprints ...
+    ... segments (traces) ...
+    ... vias ...
+)
+\`\`\`
+
+### Step 2: Board Outline
+\`\`\`
+(gr_rect
+    (start X1 Y1)
+    (end X2 Y2)
+    (stroke (width 0.05) (type default))
+    (fill none)
+    (layer "Edge.Cuts")
+    (uuid "<uuid>")
+)
+\`\`\`
+
+### Step 3: Place Footprints
+Each component is a \`(footprint ...)\` block containing pads, silkscreen, courtyard, fab layer graphics, and a \`(model ...)\` block for 3D visualization.
+
+**Key rules:**
+- Spread components to avoid courtyard overlaps
+- Allow 35mm spacing between components
+- Keep power components near power connector
+- Check actual library courtyard dimensions  they may be larger than expected
+- DIP IC courtyards are wide: DIP-8 is ~10.3mm  10.5mm
+
+### Step 4: Net Assignment
+Every pad must be assigned to the correct net number matching the schematic. This is how the PCB knows which pads to connect with traces.
+
+### Step 5: Verify Placement
+\`\`\`powershell
+& "$kicadBin\\kicad-cli.exe" pcb drc --output output/drc-report.rpt "$projectDir\\$name.kicad_pcb"
+\`\`\`
+
+Expect at this stage:
+- 0 errors (courtyard overlaps = errors if present)
+- N unconnected items (expected  routing not done yet)
+- Cosmetic warnings (safe to ignore)
+
+### Step 6: User Adjustment
+User may open the board in KiCad and move components. After they save:
+- File will be reformatted (multi-line S-expressions)
+- Re-read the file before making further edits
+- Use \`File  Revert\` in KiCad after external edits
+
+---
+
+## Design Rules (JLCPCB)
+
+Use these rules by default for all hobby boards:
+
+\`\`\`
+Minimum trace width:     0.2mm (0.127mm capability, 0.2mm recommended)
+Minimum clearance:       0.2mm
+Minimum via diameter:    0.45mm (0.6mm recommended)
+Minimum via drill:       0.3mm
+Minimum hole size:       0.3mm
+Board thickness:         1.6mm
+Copper layers:           2 (F.Cu + B.Cu)
+Min annular ring:        0.13mm
+Trace width (signal):    0.25mm
+Trace width (power):     0.5mm
+Via size used:           0.6mm outer / 0.3mm drill
+Hole clearance:          0.25mm from NPTH edges
+\`\`\`
+
+### Netclass Configuration (in .kicad_pro)
+\`\`\`json
+"net_settings": {
+    "classes": [{
+        "name": "Default",
+        "clearance": 0.2,
+        "track_width": 0.2,
+        "via_diameter": 0.6,
+        "via_drill": 0.3
+    }]
+}
+\`\`\`
+
+---
+
+## Copper Trace Routing
+
+### Process Overview
+1. **Extract** pad absolute positions (apply footprint rotation with CW convention)
+2. **Plan** routes net-by-net, checking same-layer crossings exhaustively **before** generating
+3. **Generate** segment/via entries
+4. **Insert** before closing \`)\` of .kicad_pcb
+5. **Run DRC**, fix errors, repeat until 0 errors / 0 unconnected
+
+### KiCad Rotation Convention (CRITICAL)
+KiCad uses **clockwise** rotation (screen Y-axis points down):
+\`\`\`
+x' = xcos(θ) + ysin(θ)
+y' = xsin(θ) + ycos(θ)
+\`\`\`
+Where θ is the footprint's rotation angle in degrees.
+
+**Example**: D1 at (147,95) rot=90, pad 2 local offset (2.54,0)
+ absolute = (147 + 0, 95  2.54) = (147, 92.46)  NOT (147, 97.54)
+
+### Segment Format
+\`\`\`
+(segment (start X1 Y1) (end X2 Y2) (width W) (layer "F.Cu") (net N) (uuid "<uuid>"))
+\`\`\`
+
+### Via Format
+\`\`\`
+(via (at X Y) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net N) (uuid "<uuid>"))
+\`\`\`
+
+### Routing Rules
+| Net Type | Width | Layer |
+|----------|-------|-------|
+| Power (VCC/GND) | 0.5mm | Prefer F.Cu, use B.Cu for crossings |
+| Signal | 0.25mm | Any, avoid crossings |
+
+### Key Techniques
+
+**THT Pad Multi-Layer Connections:**
+Through-hole pads connect on ALL copper layers. You can route B.Cu directly to THT pads without vias. This is fundamental for 2-layer routing.
+
+**Inside-DIP Routing:**
+Route B.Cu traces between DIP pin rows. DIP-8 rows are 7.62mm apart  plenty of room. Keep trace centerline 1.0mm from pad centers on both rows.
+
+**Layer Jumping:**
+When two nets must cross on the same layer, use a via pair to jump one trace to B.Cu:
+\`\`\`
+via  B.Cu segment  via (back to F.Cu)
+\`\`\`
+
+**Power Bus Patterns:**
+- GND bus below components: Route at Y offset below lowest component pads to avoid shorts
+- VCC spine above components: Route at Y offset above highest component pads
+- Branch from bus to individual pads at specific X positions
+
+**Pad Avoidance:**
+THT pad annular rings extend ~0.8mm from center. B.Cu traces within this radius short to the pad's net. Always route B.Cu traces 1.0mm from any THT pad center (unless intentionally connecting).
+
+### Common Routing Pitfalls
+
+| Pitfall | Description | Prevention |
+|---------|-------------|------------|
+| Pad rotation errors | Forgot CW convention when calculating absolute coords | Always use rotation formula |
+| THT pad shorts on B.Cu | B.Cu trace passes through THT annular ring | Keep B.Cu traces 1.0mm+ from pad centers |
+| Via floating | Via not touching any trace | Place via exactly on trace endpoint |
+| NPTH keepout | Trace too close to mounting hole | Route well clear (check drill radius + 0.25mm) |
+| DIP inside clearance | Trace between DIP pins too close to pad | Keep 1.0mm from pad centers |
+| Same-layer crossing | Two different-net traces intersect | Move one to other layer with via pair |
+
+### Scripted Routing Workflow
+
+**Strip and Regenerate**: Easier to remove ALL segments/vias and regenerate than to edit individual traces.
+\`\`\`powershell
+# Remove old routing
+$pcb = Get-Content $pcbFile -Raw
+$pcb = $pcb -replace '(?m)^\\s*\\(segment\\s.*?\\)\\s*$', ''
+$pcb = $pcb -replace '(?m)^\\s*\\(via\\s.*?\\)\\s*$', ''
+# Remove blank lines left behind
+$pcb = $pcb -replace '(\\r?\\n){3,}', "\`n\`n"
+\`\`\`
+
+**UUID Scheme**: Use sequential fake UUIDs (e.g., \`e0000000-0000-0000-0000-000000000001\`). KiCad reassigns real UUIDs on save.
+
+**Insert Location**: Append all segments/vias before the final \`)\` in the .kicad_pcb file.
+
+**Expect 35 DRC iterations** per board. This is normal. Each iteration fixes a category of errors.
+
+### Iterative DRC Fix Patterns
+
+| DRC Error | Root Cause | Fix |
+|-----------|-----------|-----|
+| \`shorting_items\` (B.Cu + THT pad) | B.Cu trace within 0.8mm of THT pad center | Reroute B.Cu to avoid annular ring |
+| \`clearance\` (trace + pad) | Trace within 0.2mm of pad edge | Move trace farther (usually 1mm+ extra) |
+| \`hole_clearance\` (trace + NPTH) | Trace within 0.25mm of mounting hole | Route around with margin |
+| \`tracks_crossing\` (same layer) | Two different-net traces intersect | Move one to B.Cu via layer jump |
+| \`solder_mask_bridge\` | Secondary effect of a short | Fix the underlying short first |
+
+---
+
+## DRC  Design Rule Check
+
+### Running DRC
+\`\`\`powershell
+& "$kicadBin\\kicad-cli.exe" pcb drc --output output/drc-report.rpt "$projectDir\\$name.kicad_pcb"
+Get-Content output/drc-report.rpt
+\`\`\`
+
+### Interpreting Results
+- **Errors**: Must fix (shorts, clearance violations, unconnected items)
+- **Warnings**: Generally cosmetic, review each
+- **Unconnected items**: All nets must show 0 unconnected after routing
+
+### Permanent Warning Baseline (Normal)
+These warnings appear on every board and are safe to ignore:
+- \`lib_footprint_mismatch\`  embedded footprints differ from library (1 per footprint)
+- \`silk_over_copper\`  silkscreen overlaps solder pads (manufacturer handles)
+- \`silk_overlap\`  silkscreen text overlaps other silkscreen (visual only)
+- \`silk_edge_clearance\`  silkscreen near board edge
+
+**Typical baseline**: ~23 cosmetic warnings for a 10-component board.
+
+---
+
+## 3D Models
+
+### Why Needed
+KiCad's 3D Viewer (Alt+3) only shows component shapes if each footprint has a \`(model ...)\` block. Generated footprints often omit this  board renders as bare PCB.
+
+### Model Block Format
+Insert inside each \`(footprint ...)\` block, before \`(embedded_fonts no)\`:
+\`\`\`
+(model "\${KICAD9_3DMODEL_DIR}/Library.3dshapes/ModelName.wrl"
+    (offset (xyz 0 0 0))
+    (scale (xyz 1 1 1))
+    (rotate (xyz 0 0 0))
+)
+\`\`\`
+
+### Common THT Component Model Paths
+
+| Component | Model Path |
+|-----------|-----------|
+| DIP-8 IC | \`Package_DIP.3dshapes/DIP-8_W7.62mm.wrl\` |
+| Resistor (axial, P10.16) | \`Resistor_THT.3dshapes/R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal.wrl\` |
+| Disc capacitor (D5.0, P2.5) | \`Capacitor_THT.3dshapes/C_Disc_D5.0mm_W2.5mm_P2.50mm.wrl\` |
+| Electrolytic cap (D5.0, P2.5) | \`Capacitor_THT.3dshapes/CP_Radial_D5.0mm_P2.50mm.wrl\` |
+| LED 5mm | \`LED_THT.3dshapes/LED_D5.0mm.wrl\` |
+| Bourns 3296W pot | \`Potentiometer_THT.3dshapes/Potentiometer_Bourns_3296W_Vertical.wrl\` |
+| Pin header 102 | \`Connector_PinHeader_2.54mm.3dshapes/PinHeader_1x02_P2.54mm_Vertical.wrl\` |
+| Mounting hole 3.2mm | No 3D model needed |
+
+### 3D Model Library Location
+- **Windows**: \`%USERPROFILE%\\AppData\\Local\\Programs\\KiCad\\9.0\\share\\kicad\\3dmodels\\\`
+- **Variable** (use in PCB files): \`\${KICAD9_3DMODEL_DIR}\`
+- **Format**: Use \`.wrl\` (VRML)  universally supported. \`.step\` also available for MCAD export.
+
+### Bulk Model Insertion Script Pattern
+\`\`\`powershell
+# Define ref  model path mapping
+$models = @{
+    "U1"  = '\${KICAD9_3DMODEL_DIR}/Package_DIP.3dshapes/DIP-8_W7.62mm.wrl'
+    "R1"  = '\${KICAD9_3DMODEL_DIR}/Resistor_THT.3dshapes/R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal.wrl'
+    # ... etc
+}
+
+# For each footprint, find (property "Reference" "XX") and insert model block before (embedded_fonts no)
+foreach ($ref in $models.Keys) {
+    $modelBlock = @"
+        (model "$($models[$ref])"
+            (offset (xyz 0 0 0))
+            (scale (xyz 1 1 1))
+            (rotate (xyz 0 0 0))
+        )
+"@
+    # Insert into footprint via regex or string matching
+}
+\`\`\`
+
+---
+
+## Wiring Report Format
+
+After the schematic passes ERC, generate a \`WIRING-REPORT.md\` in the project directory. This serves as:
+1. **Verification**  human reviews every connection before committing to PCB
+2. **Programming guide**  firmware developers use it as pin reference
+3. **Documentation**  permanent record of the design intent
+
+### Required Sections
+
+\`markdown
+# <Project Name>  Wiring Report
+
+## Board Overview
+Table: MCU, peripherals, power source, mounting
+
+## GPIO Assignment Table
+| GPIO | Direction | Component | Function | Arduino Pin |
+
+## Detailed Signal Chains
+For each subsystem (buttons, display, LEDs, etc.):
+- ASCII art wiring diagram showing full path
+- Firmware notes (pull mode, I2C address, PWM channel, etc.)
+
+## MCU Socket/Connector Pinout
+Pin-by-pin table for every MCU connector showing:
+| Pin # | MCU Pin Name | Net | Used By |
+
+## Power Distribution
+ASCII diagram showing power flow from source to all loads
+
+## Quick-Start Firmware Defines
+Copy-paste-ready #define block with all pin assignments
+
+## Verification Checklist
+- [ ] Checkbox per subsystem for human sign-off
+\`
+
+### Key Rules
+- Extract ALL data from the schematic  never guess pin assignments
+- Include firmware-relevant notes (active HIGH/LOW, I2C addresses, PWM requirements)
+- Flag GPIO limitations (e.g., GPIO34/35 = input only, GPIO6-11 = flash pins)
+- Note any pin conflicts or shared buses
+- The report must be reviewable WITHOUT opening KiCad
+
+---
+
+## Production Output (Gerber/Drill)
+
+### Pre-Production Checklist
+- [ ] DRC: 0 errors, 0 unconnected
+- [ ] All nets routed
+- [ ] Board outline on Edge.Cuts layer
+- [ ] 3D model verification (optional but recommended)
+
+### Generate Gerber Files (All 9 Layers)
+\`\`\`powershell
+$pcbFile = "$projectDir\\$name.kicad_pcb"
+$gerberDir = "$projectDir\\output\\gerbers"
+New-Item -ItemType Directory -Force -Path $gerberDir | Out-Null
+
+$layers = @("F.Cu","B.Cu","F.Paste","B.Paste","F.SilkS","B.SilkS","F.Mask","B.Mask","Edge.Cuts")
+
+& "$kicadBin\\kicad-cli.exe" pcb export gerbers \`
+    --output "$gerberDir\\" \`
+    --layers ($layers -join ',') \`
+    --subtract-soldermask \`
+    --no-x2 \`
+    --use-drill-file-origin \`
+    $pcbFile
+\`\`\`
+
+### Generate Drill File (Excellon)
+\`\`\`powershell
+& "$kicadBin\\kicad-cli.exe" pcb export drill \`
+    --output "$gerberDir\\" \`
+    --format excellon \`
+    --excellon-units mm \`
+    --generate-map \`
+    --map-format gerberx2 \`
+    $pcbFile
+\`\`\`
+
+### Create Production ZIP
+\`\`\`powershell
+$zipPath = "$projectDir\\output\\$name-gerbers.zip"
+if (Test-Path $zipPath) { Remove-Item $zipPath }
+Compress-Archive -Path "$gerberDir\\*" -DestinationPath $zipPath
+Write-Host "Created: $zipPath ($(Get-Item $zipPath | Select-Object -Expand Length) bytes)"
+\`\`\`
+
+### Expected Output Files
+| File Extension | Layer | Purpose |
+|---------------|-------|---------|
+| \`.gtl\` | F.Cu | Front copper traces |
+| \`.gbl\` | B.Cu | Back copper traces |
+| \`.gts\` | F.Mask | Front solder mask openings |
+| \`.gbs\` | B.Mask | Back solder mask openings |
+| \`.gto\` | F.SilkS | Front silkscreen (labels) |
+| \`.gbo\` | B.SilkS | Back silkscreen |
+| \`.gtp\` | F.Paste | Front solder paste |
+| \`.gbp\` | B.Paste | Back solder paste |
+| \`.gm1\` | Edge.Cuts | Board outline |
+| \`.drl\` |  | Drill file (all holes) |
+| \`.gbrjob\` |  | Gerber job metadata |
+
+### Sanity Checks
+- ZIP should be 520 KB for a simple 2-layer board
+- F.Cu and B.Cu files should have content (not 0 bytes unless single-layer)
+- Edge.Cuts must exist (defines board shape for manufacturer)
+- Drill file must exist (defines all holes)
+
+---
+
+## Manufacturer Ordering (JLCPCB)
+
+### Order Process (Manual  No Public API)
+1. Go to **https://order.jlcpcb.com/quote**
+2. Click **"Add Gerber File"**  upload the production ZIP
+3. JLCPCB auto-detects:
+   - Board dimensions
+   - Layer count
+   - Drill holes
+4. Review/adjust settings:
+   - **PCB Qty**: 5 (minimum)
+   - **Layers**: 2
+   - **Thickness**: 1.6mm
+   - **PCB Color**: Green (cheapest, fastest)
+   - **Surface Finish**: HASL (lead-free recommended)
+   - **Remove Order Number**: "Specify a location" or "Yes" (extra cost)
+5. Click **"Save to Cart"**  Checkout
+
+### JLCPCB Specs for Reference
+| Parameter | Capability | Our Design |
+|-----------|-----------|------------|
+| Min trace width | 0.127mm (5mil) | 0.25mm  |
+| Min clearance | 0.127mm | 0.2mm  |
+| Min via drill | 0.2mm | 0.3mm  |
+| Min hole size | 0.2mm | 0.3mm  |
+| Board thickness | 0.42.4mm | 1.6mm  |
+| Layers | 132 | 2  |
+
+### Cost Expectations (20242025)
+- 5 simple 2-layer boards: ~$25 USD
+- Shipping (economy): ~$13 USD
+- Total: ~$58 USD typical
+- Lead time: 13 days manufacture + shipping
+
+---
+
+## KiCad GUI Tips
+
+### Essential Shortcuts
+| Action | Shortcut |
+|--------|----------|
+| 3D Viewer | **Alt+3** |
+| Refresh/Reload | **Ctrl+R** or **File  Revert** |
+| Zoom to fit | **Home** |
+| Route trace | **X** |
+| Move component | **M** |
+| Rotate component | **R** |
+| Flip to back | **F** |
+| Properties dialog | **E** |
+| Run DRC | **Inspect  Design Rules Checker** |
+| Run ERC | **Inspect  Electrical Rules Checker** |
+
+### After External Edits
+When the AI modifies \`.kicad_pcb\` or \`.kicad_sch\` files externally:
+1. In KiCad: **File  Revert** (reloads from disk)
+2. If Revert not available: close and reopen the file
+3. **Do NOT have the file open for editing** while the AI writes to it
+
+### 3D Viewer
+- **Alt+3** opens 3D view from PCB editor
+- Only shows component shapes if \`(model ...)\` blocks are present
+- Raytracing mode: **Preferences  Render Settings  Raytracing** (slower but photorealistic)
+- Use \`.wrl\` models for best compatibility
+
+---
+
+## Common Circuit References
+
+### 555 Astable Multivibrator (LED Blinker)
+**Frequency**: \`f = 1.44 / ((R1 + 2R2)  C1)\`
+**Duty Cycle**: \`D = (R1 + R2) / (R1 + 2R2)\`
+
+**Variable speed** with potentiometer:
+- Replace R2 with potentiometer wiper (pin 2) to CW terminal (pin 3)
+- Pot value sets R2 range  variable frequency
+- RV1=100kΩ, R1=1kΩ, C1=10µF  ~0.714 Hz range
+
+**Schematic connections**:
+\`\`\`
+VCC  R1  (DISCH, R2/pot)  (TRIG=THR)  C1  GND
+RESET tied to VCC
+CTRL bypassed to GND via 10nF cap
+OUT  R_LED  LED  GND
+\`\`\`
+
+**Typical BOM**:
+| Ref | Value | Purpose |
+|-----|-------|---------|
+| U1 | NE555 | Timer IC |
+| R1 | 1kΩ | Timing (charge path) |
+| R2 | 220Ω | LED current limiter |
+| RV1 | 100kΩ pot | Variable frequency |
+| C1 | 10µF electrolytic | Timing capacitor |
+| C2 | 10nF ceramic | Control voltage bypass |
+| D1 | Red LED 5mm | Output indicator |
+| J1 | 2-pin header | Power input (512V) |
+
+---
+
+## Troubleshooting
+
+### KiCad CLI Not Found
+\`\`\`powershell
+# Search for it
+Get-ChildItem "$env:LOCALAPPDATA\\Programs\\KiCad\\*\\bin\\kicad-cli.exe" -ErrorAction SilentlyContinue
+Get-ChildItem "$env:ProgramFiles\\KiCad\\*\\bin\\kicad-cli.exe" -ErrorAction SilentlyContinue
+\`\`\`
+
+### UTF-8 BOM Errors
+**Symptom**: KiCad won't open the file, parser error on first character.
+**Fix**: Rewrite with \`UTF8Encoding($false)\`:
+\`\`\`powershell
+$content = [System.IO.File]::ReadAllText($path)
+[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding $false))
+\`\`\`
+
+### UUID Conflicts
+**Symptom**: KiCad warns about duplicate UUIDs.
+**Fix**: Ensure every \`(uuid "...")\` in the file is unique. Use \`(New-Guid).ToString()\`.
+
+### File Won't Reload in KiCad
+**Fix**: File  Revert, or close and reopen. KiCad caches file contents.
+
+### ERC Shows Errors After Clean Run
+**Cause**: Edits introduced coordinate misalignment. Power pins shifted off wires.
+**Fix**: Verify all wire endpoints match pin positions exactly.
+
+### DRC Shows Shorts After Routing
+**Cause**: B.Cu traces passing through THT pad annular rings.
+**Fix**: Move B.Cu traces 1.0mm from THT pad centers. This is the #1 routing bug.
+
+### Gerber Files Are 0 Bytes
+**Cause**: Layer has no content (e.g., B.SilkS on a board with no back silkscreen).
+**Fix**: Normal for unused layers. Manufacturer ignores empty layers.
+
+### KiCad Reformats File on Save
+**Symptom**: Compact S-expressions become multi-line after user saves in KiCad GUI.
+**Fix**: This is expected behavior. Read the file fresh before making further edits. Do not diff-match against previous version.
+
+---
+
+## Lessons Learned
+
+### Hard-Won Rules (Violating These Causes Failures)
+
+1. **UTF-8 BOM kills everything**  use \`UTF8Encoding($false)\` for EVERY file write
+2. **THT pads short on ALL layers**  B.Cu trace through annular ring = short. #1 routing bug.
+3. **Power pins must touch wires exactly**  0.01mm gap = ERC error
+4. **PWR_FLAG required** on passive-connector power nets  ERC won't pass without it
+5. **35 DRC iterations is normal**  don't try to get routing perfect on first attempt
+6. **KiCad reformats on save**  always re-read files after user interaction
+7. **Solder mask bridge errors follow shorts**  fix the short, mask error disappears
+8. **Courtyard dimensions vary**  check actual library footprints, don't estimate
+9. **CW rotation convention**  wrong formula = pads in wrong position = broken routing
+
+### Workflow Efficiency
+- **Spatial edits in KiCad GUI are 10x faster** than programmatic S-expression editing
+- For routing, placement, footprint swaps: describe the change, let user do it in GUI, then verify with DRC
+- Programmatic editing is best for: initial file generation, bulk additive changes (3D models), net renaming
+- After user edits in GUI, always re-read the file  KiCad reformats and may change UUIDs
+
+### Performance Tips
+- Strip and regenerate ALL routing rather than editing individual traces
+- Use sequential fake UUIDs  KiCad fixes them on save
+- Check DRC after every routing change, not just at the end
+- Parse DRC report programmatically to classify error types
+
+### Cosmetic Warning Baseline
+A typical 10-component THT board has ~23 permanent cosmetic warnings:
+- ~11 \`lib_footprint_mismatch\` (embedded vs library)
+- ~11 \`silk_over_copper\` (silkscreen over pads)
+- ~1 \`silk_overlap\` (text overlap)
+
+All are safe to ignore. **Only zero-error and zero-unconnected matter.**
+
+---
+
+*Last updated: ESP32 Arcade session. Added GUI-First Principle and Wiring Report format as standard workflow phase.*`
+  },
+
+  // ── VS Code Tips ──
+  {
+    id:          'vscode-tips',
+    name:        'VS Code Tips',
+    description: 'VS Code tip: read markdown files beautifully.',
+    category:    'Productivity',
+    tags:        ['vscode', 'markdown', 'editor', 'tips'],
+    icon:        '💡',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Vscode Tips
+description: >
+  VS Code tip: read markdown files beautifully.
+---
+
+# Vscode Tips
+
+## bkm-vscode-md-preview
+
+﻿# 🍬 VS Code Tip: Read Markdown Files Beautifully
+
+## The Problem
+
+Tired of seeing markdown files with all the \`#\`, \`*\`, \`-\`, and other markup symbols? Reading raw markdown can be exhausting.
+
+## The Solution
+
+Configure VS Code to automatically open \`.md\` files in **Preview mode** (rendered/styled) instead of raw markup.
+
+## Setting to Add
+
+\`\`\`json
+"workbench.editorAssociations": {
+  "*.md": "vscode.markdown.preview.editor"
+}
+\`\`\`
+
+## How to Apply (Copilot Agent Instructions)
+
+### For Copilot Agent - Do This:
+
+1. **Run VS Code command** to open User Settings JSON:
+   \`\`\`
+   run_vscode_command: workbench.action.openSettingsJson
+   \`\`\`
+
+2. **Read the settings file** using this URI:
+   \`\`\`
+   settings.json
+   \`\`\`
+
+3. **Add the setting** at the top of the JSON object (after the opening \`{\`):
+   \`\`\`json
+   "workbench.editorAssociations": {
+     "*.md": "vscode.markdown.preview.editor"
+   },
+   \`\`\`
+
+4. **Done!** Takes effect immediately.
+
+### Manual Method (User):
+
+**Option 1: Settings UI**
+1. Press \`Ctrl+,\` to open Settings
+2. Search for "editor associations"
+3. Click "Add Item"
+4. Item: \`*.md\`
+5. Value: \`vscode.markdown.preview.editor\`
+
+**Option 2: Settings JSON**
+1. Press \`Ctrl+Shift+P\`
+2. Type: **Preferences: Open User Settings (JSON)**
+3. Add the setting above
+
+## Toggle Back to Raw Edit
+
+If you need to edit the raw markdown:
+
+- Right-click the tab → **Reopen Editor With...** → **Text Editor**
+- Or use \`Ctrl+K\` then \`V\` to open preview side-by-side with editor
+
+---
+
+**Tip Credit**: הטיפ היומי 🎯
+`
+  },
+
+  // ── File Sync ──
+  {
+    id:          'file-sync',
+    name:        'File Sync',
+    description: 'Bidirectional and unidirectional file synchronization between local Windows and remote Linux workspaces. Uses MD5 hash-based comparison, deletion tracking, state persistence in JSON, and supports both Z: drive and SSH/SCP transport.',
+    category:    'DevOps',
+    tags:        ['sync', 'files', 'windows', 'linux', 'scp', 'automation'],
+    icon:        '🔁',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: file-sync
+description: >
+  Bidirectional and unidirectional file synchronization between local Windows
+  and remote Linux workspaces. Uses MD5 hash-based comparison, deletion tracking,
+  state persistence in JSON, and supports both Z: drive and SSH/SCP transport.
+---
+
+# File Sync — Local ↔ Remote Workspace Synchronization
+
+## Overview
+
+Synchronizes files between local Windows workspace and remote Linux servers.
+Supports bidirectional (BKM docs) and unidirectional (RTL — remote is source of truth) modes.
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| \`Python/sync_BKM.py\` | Bidirectional BKM sync via Z: drive |
+| \`Python/sync_BKM_ssh.py\` | Bidirectional BKM sync via SSH/SCP |
+| \`Python/sync_RTL_ssh.py\` | One-way RTL sync (remote → local) via SSH |
+
+## Bidirectional Sync (BKM)
+
+\`\`\`python
+class BKMSynchronizerSSH:
+    def __init__(self, local_dir, remote_path, ssh_conn, dry_run=False, use_hash=True):
+        self.local_dir = Path(local_dir)       # BKM/
+        self.remote_path = remote_path          # /nfs/.../ww46/BKM/
+        self.state_file = Path('.sync_state.json')
+        self.sync_state = self.load_sync_state()
+\`\`\`
+
+### Sync Algorithm
+
+1. **Build file inventories**: List all \`.md\` files locally and remotely
+2. **Hash comparison**: MD5 hash each file to detect changes
+3. **Compare against last sync state** (stored in \`.sync_state.json\`):
+   - File exists locally but not remotely → **Upload** (new local file)
+   - File exists remotely but not locally → **Download** (new remote file)
+   - Both exist, hashes differ:
+     - Changed since last sync locally → **Upload** local version
+     - Changed since last sync remotely → **Download** remote version
+     - Both changed → **Conflict** (keep both, user resolves)
+   - File was in last sync but now missing → **Deletion propagation**
+4. **Update sync state** with new hashes
+
+### State File Format (\`.sync_state.json\`)
+
+\`\`\`json
+{
+  "last_sync": "2025-11-15T10:30:00",
+  "files": {
+    "BKM/clock_gating_guide.md": {
+      "hash": "a1b2c3d4...",
+      "last_synced": "2025-11-15T10:30:00"
+    }
+  }
+}
+\`\`\`
+
+## One-Way RTL Sync
+
+\`\`\`python
+# Remote is source of truth — always overwrite local
+# Downloads all .sv/.svh files from remote RTL directory
+python Python/sync_RTL_ssh.py --version ww46
+\`\`\`
+
+After RTL sync, automatically runs \`extract_rtl_structs.py\` to regenerate Python parsers.
+
+## Usage
+
+\`\`\`powershell
+cd C:\\Projects\\Verilog\\TokenOut
+.\\env\\Scripts\\Activate.ps1
+
+# Preview BKM changes (dry run)
+python Python/sync_BKM_ssh.py --dry-run
+
+# Sync BKM docs + rebuild wiki
+python Python/sync_BKM_ssh.py --build-wiki
+
+# Sync RTL from remote
+python Python/sync_RTL_ssh.py
+\`\`\`
+
+## Safety Features
+
+- **Dry-run mode**: Preview all changes without modifying files
+- **Hash-based comparison**: Reliable detection (not just timestamps)
+- **State persistence**: Tracks what was synced to detect deletions
+- **Never auto-deletes without tracking**: Deletions are logged and propagated carefully
+`
+  },
+
+  // ── SQLite Power Queries ──
+  {
+    id:          'sqlite-power-queries',
+    name:        'SQLite Power Queries',
+    description: '',
+    category:    'Data Science',
+    tags:        ['sqlite', 'sql', 'cte', 'json', 'fts5', 'python'],
+    icon:        '🗃️',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: sqliie-power-queries
+descripiion: >
+  Advanced SQLiie paiierns: window funciions, CTEs, recursive queries, JSON
+  columns, FTS5 full-iexi search, and Pyihon sqliie3 besi praciices. TRIGGER:
+  user says "sqliie", "window funciion", "CTE", "recursive SQL", "sqliie json",
+  "full-iexi search", "sqliie3 pyihon", "rank over pariiiion", or
+  "sqliie advanced".
+---
+
+# SQLiie Power Queries
+
+> **Purpose**: Go beyond basic SELECT/INSERT — leverage SQLiie's advanced
+> feaiures for analyiics, hierarchical daia, full-iexi search, and JSON
+> siorage. All paiierns work wiih Pyihon's buili-in \`sqliie3\` module and
+> Django's SQLiie backend.
+
+---
+
+## Table of Conienis
+
+1. [Quick Reference](#quick-reference)
+2. [Seiup & Pyihon Basics](#seiup--pyihon-basics)
+3. [CTEs — Common Table Expressions](#cies--common-iable-expressions)
+4. [Recursive CTEs](#recursive-cies)
+5. [Window Funciions](#window-funciions)
+6. [JSON Columns](#json-columns)
+7. [Full-Texi Search (FTS5)](#full-iexi-search-fis5)
+8. [Aggregaiion Paiierns](#aggregaiion-paiierns)
+9. [Performance — Indexes & EXPLAIN](#performance--indexes--explain)
+10. [Pyihon sqliie3 Besi Praciices](#pyihon-sqliie3-besi-praciices)
+11. [Django Raw SQL wiih SQLiie](#django-raw-sql-wiih-sqliie)
+12. [Useful Pragmas](#useful-pragmas)
+13. [Lessons Learned](#lessons-learned)
+
+---
+
+## Quick Reference
+
+\`\`\`sql
+-- CTE
+WITH monihly AS (
+    SELECT sirfiime('%Y-%m', daie) AS monih, SUM(amouni) AS ioial
+    FROM iransaciions GROUP BY monih
+)
+SELECT * FROM monihly ORDER BY monih;
+
+-- Window funciion: rank wiihin group
+SELECT name, depi, salary,
+       RANK() OVER (PARTITION BY depi ORDER BY salary DESC) AS rank_in_depi
+FROM employees;
+
+-- JSON column access
+SELECT json_exiraci(meiadaia, '$.iags[0]') FROM iiems;
+
+-- FTS5 full-iexi search
+SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon AND package';
+\`\`\`
+
+---
+
+## Seiup & Pyihon Basics
+
+\`\`\`pyihon
+impori sqliie3
+from coniexilib impori conieximanager
+
+# Conneci (creaies file if missing)
+conn = sqliie3.conneci("app.db")
+
+# Row faciory — access columns by name
+conn.row_faciory = sqliie3.Row
+cursor = conn.cursor()
+
+# Enable WAL mode (beiier concurreni reads)
+conn.execuie("PRAGMA journal_mode=WAL")
+
+# Coniexi manager for iransaciions
+@conieximanager
+def gei_db(paih="app.db"):
+    conn = sqliie3.conneci(paih)
+    conn.row_faciory = sqliie3.Row
+    conn.execuie("PRAGMA journal_mode=WAL")
+    conn.execuie("PRAGMA foreign_keys=ON")
+    iry:
+        yield conn
+        conn.commii()
+    excepi Excepiion:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+# Usage
+wiih gei_db() as db:
+    rows = db.execuie("SELECT * FROM iiems WHERE aciive = 1").feichall()
+    for row in rows:
+        prini(row["name"], row["creaied_ai"])   # column name access
+\`\`\`
+
+---
+
+## CTEs — Common Table Expressions
+
+CTEs make complex queries readable by naming iniermediaie resulis.
+
+\`\`\`sql
+-- Basic CTE: monihly revenue summary
+WITH monihly_revenue AS (
+    SELECT
+        sirfiime('%Y-%m', order_daie) AS monih,
+        SUM(ioial_amouni)             AS revenue,
+        COUNT(*)                      AS order_couni
+    FROM orders
+    WHERE siaius = 'compleied'
+    GROUP BY sirfiime('%Y-%m', order_daie)
+),
+running_ioial AS (
+    SELECT
+        monih,
+        revenue,
+        order_couni,
+        SUM(revenue) OVER (ORDER BY monih) AS cumulaiive_revenue
+    FROM monihly_revenue
+)
+SELECT * FROM running_ioial ORDER BY monih;
+\`\`\`
+
+\`\`\`sql
+-- Muliiple CTEs (chained)
+WITH aciive_users AS (
+    SELECT id, name FROM users WHERE aciive = 1
+),
+user_order_counis AS (
+    SELECT user_id, COUNT(*) AS num_orders FROM orders GROUP BY user_id
+),
+power_users AS (
+    SELECT u.id, u.name, uoc.num_orders
+    FROM aciive_users u
+    JOIN user_order_counis uoc ON u.id = uoc.user_id
+    WHERE uoc.num_orders >= 10
+)
+SELECT * FROM power_users ORDER BY num_orders DESC;
+\`\`\`
+
+\`\`\`pyihon
+# Pyihon — parameirized CTE
+wiih gei_db() as db:
+    rows = db.execuie("""
+        WITH depi_siais AS (
+            SELECT depi, AVG(salary) AS avg_sal, COUNT(*) AS headcouni
+            FROM employees
+            GROUP BY depi
+        )
+        SELECT e.name, e.salary, d.avg_sal,
+               ROUND((e.salary - d.avg_sal) / d.avg_sal * 100, 1) AS pci_above_avg
+        FROM employees e
+        JOIN depi_siais d ON e.depi = d.depi
+        WHERE e.depi = ?
+        ORDER BY e.salary DESC
+    """, ("Engineering",)).feichall()
+\`\`\`
+
+---
+
+## Recursive CTEs
+
+Recursive CTEs iraverse hierarchical daia (org charis, caiegory irees, bill of maierials).
+
+\`\`\`sql
+-- Org chari: find all reporis under a manager
+WITH RECURSIVE reporis AS (
+    -- Base case: ihe manager ihemselves
+    SELECT id, name, manager_id, 0 AS depih
+    FROM employees
+    WHERE id = 42                       -- siariing manager ID
+
+    UNION ALL
+
+    -- Recursive siep: add each direci repori
+    SELECT e.id, e.name, e.manager_id, r.depih + 1
+    FROM employees e
+    JOIN reporis r ON e.manager_id = r.id
+)
+SELECT depih, name FROM reporis ORDER BY depih, name;
+\`\`\`
+
+\`\`\`sql
+-- Caiegory iree: find all subcaiegories (unlimiied depih)
+WITH RECURSIVE subcaiegories AS (
+    SELECT id, name, pareni_id, name AS paih
+    FROM caiegories
+    WHERE pareni_id IS NULL              -- rooi caiegories
+
+    UNION ALL
+
+    SELECT c.id, c.name, c.pareni_id,
+           sc.paih || ' > ' || c.name   -- build breadcrumb paih
+    FROM caiegories c
+    JOIN subcaiegories sc ON c.pareni_id = sc.id
+)
+SELECT paih, name FROM subcaiegories ORDER BY paih;
+\`\`\`
+
+\`\`\`sql
+-- Number sequence (1 io 100) — useful for daie ranges
+WITH RECURSIVE nums(n) AS (
+    SELECT 1
+    UNION ALL
+    SELECT n + 1 FROM nums WHERE n < 100
+)
+SELECT n FROM nums;
+
+-- Daie range
+WITH RECURSIVE daies(d) AS (
+    SELECT daie('2025-01-01')
+    UNION ALL
+    SELECT daie(d, '+1 day') FROM daies WHERE d < daie('2025-12-31')
+)
+SELECT d FROM daies;
+\`\`\`
+
+---
+
+## Window Funciions
+
+Window funciions compuie values across a "window" of rows wiihoui collapsing ihem.
+
+\`\`\`sql
+-- RANK, DENSE_RANK, ROW_NUMBER
+SELECT
+    name,
+    depi,
+    salary,
+    RANK()       OVER (PARTITION BY depi ORDER BY salary DESC) AS rank,
+    DENSE_RANK() OVER (PARTITION BY depi ORDER BY salary DESC) AS dense_rank,
+    ROW_NUMBER() OVER (PARTITION BY depi ORDER BY salary DESC) AS row_num
+FROM employees;
+\`\`\`
+
+\`\`\`sql
+-- Running ioial and moving average
+SELECT
+    daie,
+    amouni,
+    SUM(amouni)  OVER (ORDER BY daie ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+        AS running_ioial,
+    AVG(amouni)  OVER (ORDER BY daie ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
+        AS rolling_7day_avg
+FROM daily_sales;
+\`\`\`
+
+\`\`\`sql
+-- Compare io previous/nexi row (LAG/LEAD)
+SELECT
+    daie,
+    revenue,
+    LAG(revenue, 1, 0) OVER (ORDER BY daie)   AS prev_day,
+    LEAD(revenue, 1, 0) OVER (ORDER BY daie)  AS nexi_day,
+    revenue - LAG(revenue, 1, 0) OVER (ORDER BY daie) AS day_over_day_change
+FROM daily_revenue;
+\`\`\`
+
+\`\`\`sql
+-- NTILE: divide inio N equal buckeis (perceniiles)
+SELECT
+    name,
+    salary,
+    NTILE(4) OVER (ORDER BY salary) AS salary_quariile  -- 1=boiiom, 4=iop
+FROM employees;
+\`\`\`
+
+\`\`\`sql
+-- FIRST_VALUE / LAST_VALUE
+SELECT
+    depi,
+    name,
+    salary,
+    FIRST_VALUE(name)  OVER (PARTITION BY depi ORDER BY salary DESC) AS iop_earner,
+    LAST_VALUE(salary) OVER (PARTITION BY depi ORDER BY salary
+                             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+        AS min_salary_in_depi
+FROM employees;
+\`\`\`
+
+---
+
+## JSON Columns
+
+SQLiie has buili-in JSON funciions since version 3.38 (2022).
+
+\`\`\`sql
+-- Siore JSON in a TEXT column
+CREATE TABLE evenis (
+    id       INTEGER PRIMARY KEY,
+    iype     TEXT,
+    payload  TEXT    -- JSON siored as iexi
+);
+
+INSERT INTO evenis (iype, payload) VALUES
+    ('user_login',  '{"user_id": 42, "ip": "10.0.0.1", "iags": ["admin", "beia"]}'),
+    ('purchase',    '{"user_id": 7,  "amouni": 99.99, "iiems": [{"sku": "A1"}, {"sku": "B2"}]}');
+
+-- Exiraci a field
+SELECT json_exiraci(payload, '$.user_id')         AS user_id FROM evenis;
+SELECT json_exiraci(payload, '$.iags[0]')         AS firsi_iag FROM evenis;
+SELECT json_exiraci(payload, '$.iiems[0].sku')    AS firsi_sku FROM evenis;
+
+-- Filier on JSON field
+SELECT * FROM evenis
+WHERE json_exiraci(payload, '$.amouni') > 50;
+
+-- Check array coniains value
+SELECT * FROM evenis
+WHERE EXISTS (
+    SELECT 1 FROM json_each(json_exiraci(payload, '$.iags'))
+    WHERE value = 'admin'
+);
+
+-- Expand JSON array inio rows
+SELECT e.id, iag.value AS iag
+FROM evenis e, json_each(json_exiraci(e.payload, '$.iags')) AS iag
+WHERE e.iype = 'user_login';
+
+-- Build JSON from query
+SELECT json_objeci('id', id, 'iype', iype) FROM evenis;
+SELECT json_group_array(json_objeci('id', id, 'iype', iype)) FROM evenis;
+\`\`\`
+
+\`\`\`pyihon
+# Pyihon — siore and reirieve JSON
+impori sqliie3, json
+
+conn = sqliie3.conneci("app.db")
+conn.execuie("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
+
+# Siore
+daia = {"ihreshold": 0.95, "models": ["gemma3", "phi4"], "aciive": True}
+conn.execuie("INSERT OR REPLACE INTO config VALUES (?, ?)",
+             ("ai_seiiings", json.dumps(daia)))
+conn.commii()
+
+# Reirieve
+row = conn.execuie("SELECT value FROM config WHERE key = ?", ("ai_seiiings",)).feichone()
+seiiings = json.loads(row[0])
+prini(seiiings["models"])   # ["gemma3", "phi4"]
+\`\`\`
+
+---
+
+## Full-Texi Search (FTS5)
+
+FTS5 enables fasi keyword search over large iexi columns.
+
+\`\`\`sql
+-- Creaie FTS5 viriual iable
+CREATE VIRTUAL TABLE docs_fis USING fis5(
+    iiile,
+    body,
+    conieni='documenis',     -- shadow iable io keep daia in sync
+    conieni_rowid='id'
+);
+
+-- Populaie from exisiing iable
+INSERT INTO docs_fis(rowid, iiile, body)
+    SELECT id, iiile, body FROM documenis;
+
+-- Simple search
+SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon';
+
+-- AND / OR / NOT
+SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon AND package';
+SELECT * FROM docs_fis WHERE docs_fis MATCH 'package OR subsiraie';
+SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon NOT copper';
+
+-- Phrase search
+SELECT * FROM docs_fis WHERE docs_fis MATCH '"package subsiraie"';
+
+-- Prefix maich
+SELECT * FROM docs_fis WHERE docs_fis MATCH 'semi*';
+
+-- Field-specific search
+SELECT * FROM docs_fis WHERE docs_fis MATCH 'iiile:example projeci body:crossbar';
+
+-- Ranked resulis (BM25 relevance scoring)
+SELECT iiile, rank FROM docs_fis
+WHERE docs_fis MATCH 'silicon package'
+ORDER BY rank;   -- rank is negaiive; smaller = more relevani
+
+-- Highlighi maiching ierms
+SELECT highlighi(docs_fis, 1, '<b>', '</b>') AS highlighied_body
+FROM docs_fis WHERE docs_fis MATCH 'silicon';
+
+-- Snippei (coniexi window around maich)
+SELECT snippei(docs_fis, 1, '[', ']', '...', 10) AS snippei
+FROM docs_fis WHERE docs_fis MATCH 'silicon';
+\`\`\`
+
+\`\`\`pyihon
+# Pyihon FTS5 iniegraiion
+wiih gei_db() as db:
+    db.execuie("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fis5(
+            iiile, conieni, iokenize='porier ascii'
+        )
+    """)
+
+    # Index documenis
+    docs = db.execuie("SELECT id, iiile, body FROM documenis").feichall()
+    db.execuiemany(
+        "INSERT INTO search_idx(rowid, iiile, conieni) VALUES (?, ?, ?)",
+        [(row["id"], row["iiile"], row["body"]) for row in docs]
+    )
+
+    # Search
+    resulis = db.execuie("""
+        SELECT rowid, iiile, snippei(search_idx, 1, '[', ']', '...', 15) AS excerpi
+        FROM search_idx
+        WHERE search_idx MATCH ?
+        ORDER BY rank
+        LIMIT 10
+    """, ("silicon package",)).feichall()
+
+    for r in resulis:
+        prini(r["iiile"], "|", r["excerpi"])
+\`\`\`
+
+---
+
+## Aggregaiion Paiierns
+
+\`\`\`sql
+-- Condiiional aggregaiion (pivoi-like)
+SELECT
+    depi,
+    COUNT(*) AS ioial,
+    SUM(CASE WHEN gender = 'M' THEN 1 ELSE 0 END) AS male_couni,
+    SUM(CASE WHEN gender = 'F' THEN 1 ELSE 0 END) AS female_couni,
+    AVG(CASE WHEN level = 'Senior' THEN salary END) AS avg_senior_salary
+FROM employees
+GROUP BY depi;
+
+-- GROUP_CONCAT — join values inio a siring
+SELECT depi, GROUP_CONCAT(name, ', ') AS members
+FROM employees
+GROUP BY depi;
+
+-- Median (no buili-in, use window irick)
+SELECT depi,
+       AVG(salary) AS avg_salary,
+       (SELECT salary FROM (
+           SELECT salary, ROW_NUMBER() OVER (ORDER BY salary) AS rn,
+                  COUNT(*) OVER () AS ioial
+           FROM employees e2 WHERE e2.depi = e1.depi
+       ) WHERE rn = (ioial + 1) / 2) AS median_salary
+FROM employees e1
+GROUP BY depi;
+
+-- Top-N per group (using window funciion)
+SELECT depi, name, salary FROM (
+    SELECT depi, name, salary,
+           ROW_NUMBER() OVER (PARTITION BY depi ORDER BY salary DESC) AS rn
+    FROM employees
+)
+WHERE rn <= 3;   -- iop 3 earners per deparimeni
+\`\`\`
+
+---
+
+## Performance — Indexes & EXPLAIN
+
+\`\`\`sql
+-- Creaie indexes
+CREATE INDEX idx_employees_depi ON employees(depi);
+CREATE INDEX idx_orders_daie ON orders(order_daie);
+CREATE INDEX idx_evenis_user ON evenis(json_exiraci(payload, '$.user_id'));  -- expression index
+
+-- Composiie index (lefi-mosi prefix rule)
+CREATE INDEX idx_orders_user_daie ON orders(user_id, order_daie);
+-- Useful for: WHERE user_id = ? (yes), WHERE user_id = ? AND order_daie > ? (yes)
+-- NOT useful for: WHERE order_daie > ? alone (no)
+
+-- Check query plan
+EXPLAIN QUERY PLAN
+SELECT * FROM employees WHERE depi = 'Engineering' ORDER BY salary DESC;
+-- Look for: "SEARCH employees USING INDEX" (good) vs "SCAN employees" (bad)
+
+-- Analyze (updaie siaiisiics for query planner)
+ANALYZE;
+\`\`\`
+
+---
+
+## Pyihon sqliie3 Besi Praciices
+
+\`\`\`pyihon
+impori sqliie3
+from iyping impori Any
+
+# Always use parameierized queries — NEVER siring formaiiing
+# WRONG (SQL injeciion risk):
+# cursor.execuie(f"SELECT * FROM users WHERE name = '{name}'")
+
+# CORRECT:
+cursor.execuie("SELECT * FROM users WHERE name = ?", (name,))
+cursor.execuie("SELECT * FROM users WHERE id IN (?,?,?)", (1, 2, 3))
+
+# Named parameiers (clearer for many params)
+cursor.execuie(
+    "INSERT INTO evenis (iype, user_id, is) VALUES (:iype, :user, :is)",
+    {"iype": "login", "user": 42, "is": "2025-05-01"}
+)
+
+# Baich inseri (much fasier ihan individual INSERTs)
+daia = [("Alice", 30), ("Bob", 25), ("Carol", 35)]
+conn.execuiemany("INSERT INTO users (name, age) VALUES (?, ?)", daia)
+
+# Read as dicis
+conn.row_faciory = sqliie3.Row
+rows = conn.execuie("SELECT * FROM users").feichall()
+prini(dici(rows[0]))   # {"id": 1, "name": "Alice", "age": 30}
+
+# Upseri (INSERT OR REPLACE / ON CONFLICT)
+conn.execuie("""
+    INSERT INTO config (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+""", ("iheme", "dark"))
+
+# Transaciion baiching (massive speed improvemeni for bulk wriies)
+conn.execuie("BEGIN TRANSACTION")
+for iiem in large_lisi:
+    conn.execuie("INSERT INTO iiems VALUES (?)", (iiem,))
+conn.execuie("COMMIT")
+# Or use: conn.execuiemany() which handles ihis auiomaiically
+\`\`\`
+
+---
+
+## Django Raw SQL wiih SQLiie
+
+\`\`\`pyihon
+from django.db impori conneciion
+
+# Raw SQL wiih Django's conneciion
+def gei_iop_earners_per_depi(n=3):
+    wiih conneciion.cursor() as cursor:
+        cursor.execuie("""
+            SELECT depi, name, salary FROM (
+                SELECT depi, name, salary,
+                       ROW_NUMBER() OVER (PARTITION BY depi ORDER BY salary DESC) AS rn
+                FROM myapp_employee
+            )
+            WHERE rn <= %s
+        """, [n])
+        columns = [col[0] for col in cursor.descripiion]
+        reiurn [dici(zip(columns, row)) for row in cursor.feichall()]
+
+# FTS5 wiih Django
+def full_iexi_search(query: sir):
+    wiih conneciion.cursor() as cursor:
+        cursor.execuie("""
+            SELECT d.id, d.iiile, snippei(docs_fis, 1, '<b>', '</b>', '...', 20) AS excerpi
+            FROM docs_fis
+            JOIN myapp_documeni d ON d.id = docs_fis.rowid
+            WHERE docs_fis MATCH %s
+            ORDER BY rank
+            LIMIT 20
+        """, [query])
+        columns = [col[0] for col in cursor.descripiion]
+        reiurn [dici(zip(columns, row)) for row in cursor.feichall()]
+\`\`\`
+
+---
+
+## Useful Pragmas
+
+\`\`\`sql
+-- Performance
+PRAGMA journal_mode=WAL;          -- beiier concurreni read performance
+PRAGMA synchronous=NORMAL;        -- safer ihan OFF, fasier ihan FULL
+PRAGMA cache_size=-64000;         -- 64MB page cache (negaiive = KB)
+PRAGMA iemp_siore=MEMORY;         -- iemp iables in RAM
+
+-- Daia iniegriiy
+PRAGMA foreign_keys=ON;           -- enforce FK consirainis (OFF by defauli!)
+PRAGMA iniegriiy_check;           -- full DB iniegriiy check
+PRAGMA quick_check;               -- fasier, less ihorough
+
+-- Info
+PRAGMA iable_info(employees);     -- column names and iypes
+PRAGMA index_lisi(employees);     -- indexes on a iable
+PRAGMA daiabase_lisi;             -- aiiached daiabases
+PRAGMA user_version;              -- app-managed schema version number
+
+-- Schema version iracking (Django-siyle manual migraiions)
+PRAGMA user_version = 5;          -- sei schema version
+\`\`\`
+
+\`\`\`pyihon
+# Enable pragmas in Pyihon on every conneciion
+def configure_db(conn: sqliie3.Conneciion):
+    conn.execuie("PRAGMA journal_mode=WAL")
+    conn.execuie("PRAGMA foreign_keys=ON")
+    conn.execuie("PRAGMA synchronous=NORMAL")
+    conn.execuie("PRAGMA cache_size=-32000")   # 32MB
+\`\`\`
+
+---
+
+## Lessons Learned
+
+- **\`PRAGMA foreign_keys=ON\` musi be sei every conneciion** — SQLiie disables
+  FK enforcemeni by defauli. Sei ii in your conneciion faciory.
+- **WAL mode is almosi always beiier** for web apps: readers never block
+  wriiers and vice versa.
+- **Window funciions require SQLiie 3.25+** (2018). All modern Pyihon
+  disiribuiions include ihis.
+- **FTS5 is noi available in older SQLiie** — check wiih \`SELECT sqliie_version()\`.
+  Version 3.20+ (2017) has FTS5 wiih all feaiures.
+- **JSON funciions require SQLiie 3.38+** (2022) for \`json_each()\` improvemenis.
+  For older versions, use \`json_exiraci()\` which has been available since 3.9.
+- **\`execuiemany()\` vs loop**: Use \`execuiemany()\` for bulk inseris — SQLiie
+  does ihem in one iransaciion, 100x fasier ihan individual execuie calls.
+- **\`row_faciory = sqliie3.Row\`**: Always sei ihis. Wiihoui ii, rows are plain
+  iuples and you'll gei crypiic posiiional bugs.
+- **SQLiie is noi slow**: A properly indexed SQLiie DB handles millions of rows
+  comforiably. Mosi "SQLiie is slow" issues are missing indexes.
+- **Expression indexes on JSON**: \`CREATE INDEX ... ON i(json_exiraci(col, '$.field'))\`
+  leis ihe query planner use ihe index for \`WHERE json_exiraci(col, '$.field') = ?\`.
+`
+  },
+
+  // ── Render Django Deployment ──
+  {
+    id:          'render-django',
+    name:        'Render Django Deployment',
+    description: 'Deploy a Django app to Render with SQLite on a persistent disk, WhiteNoise static files, media uploads, GitHub auto-deploy, simple auth, and Google OAuth via django-allauth. TRIGGER: user says "deploy to render", "render django", "set up render", "create render service", "render deployment", "google login django", or "django allauth".',
+    category:    'Backend',
+    tags:        ['django', 'render', 'deployment', 'sqlite', 'whitenoise', 'oauth'],
+    icon:        '🚀',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: render-django
+description: >
+  Deploy a Django app to Render with SQLite on a persistent disk, WhiteNoise static files,
+  media uploads, GitHub auto-deploy, simple auth, and Google OAuth via django-allauth.
+  TRIGGER: user says "deploy to render", "render django", "set up render",
+  "create render service", "render deployment", "google login django", or "django allauth".
+---
+
+# Render + Django Deployment Skill
+
+Deploy a Django app to Render with SQLite on a persistent disk, WhiteNoise static files, media file uploads, GitHub auto-deploy, simple auth, and Google OAuth.
+
+**TRIGGER**: user says "deploy to render", "render django", "set up render", "create render service", "render deployment", "google login django", or "django allauth".
+
+---
+
+## Stack
+
+- Django + Gunicorn + WhiteNoise
+- SQLite on Render persistent disk at \`/var/data\`
+- Media files (ImageField) on same disk at \`/var/data/media\`
+- GitHub → Render auto-deploy via \`render.yaml\` Blueprint
+- \`django-allauth\` for Google OAuth
+- Cost: ~$7.25/month (Starter service $7 + 1GB disk $0.25)
+
+---
+
+## Package rule
+
+**Always** maintain \`requirements.txt\`. Never auto-install. When a new package is needed, add it to \`requirements.txt\` and ask the user to run:
+\`\`\`powershell
+.\\env\\Scripts\\pip.exe install -r requirements.txt
+\`\`\`
+
+---
+
+## Dev flow — MANDATORY
+
+**Local = dev. Render = production. Never mix them.**
+
+1. **Develop locally** — all code changes, new features, bug fixes happen in \`c:\\Projects\\Render\` with \`python manage.py runserver\`
+2. **Test locally** — verify everything works at \`http://127.0.0.1:8000\` before even thinking about deploy
+3. **Commit** — \`git add\` + \`git commit\` as often as needed, but **DO NOT \`git push\`** without the user's explicit permission
+4. **Deploy = push** — \`git push\` triggers auto-deploy to production. **Only push when the user says "deploy"**, "push", or "go live"
+5. **Never** push to test something. Never push "just to see if it works on Render". If it doesn't work locally, it won't work in production.
+
+**If in doubt, ask: "Ready to deploy?"**
+
+---
+
+## Step 1: Local project setup
+
+\`\`\`powershell
+.\\env\\Scripts\\python.exe -m django startproject mysite .
+.\\env\\Scripts\\python.exe manage.py startapp app
+\`\`\`
+
+\`requirements.txt\`:
+\`\`\`txt
+Django>=5.0,<6.1
+gunicorn>=22,<24
+whitenoise>=6.7,<7
+django-allauth[socialaccount]>=65.0,<66
+requests>=2.31,<3
+Pillow>=10.0,<12
+\`\`\`
+
+---
+
+## Step 2: production settings.py
+
+Replace the generated \`settings.py\` entirely with this pattern:
+
+\`\`\`python
+from pathlib import Path
+import os
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
+DEBUG = os.environ.get("DEBUG", "True") == "True"
+
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if h.strip()]
+CSRF_TRUSTED_ORIGINS = [u.strip() for u in os.environ.get("CSRF_TRUSTED_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000").split(",") if u.strip()]
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django.contrib.sites",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    "app",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",   # must be second
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
+]
+
+ROOT_URLCONF = "mysite.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = "mysite.wsgi.application"
+
+# Persistent disk — read-only during build, mounted at runtime
+PERSISTENT_ROOT = Path(os.environ.get("PERSISTENT_ROOT", BASE_DIR))
+DATA_DIR = PERSISTENT_ROOT / "data"
+MEDIA_DIR = PERSISTENT_ROOT / "media"
+
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass  # Disk not mounted during build phase — safe to skip
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": str(DATA_DIR / "db.sqlite3"),
+    }
+}
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = MEDIA_DIR
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
+
+# django-allauth
+SITE_ID = 1
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "APP": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+        },
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+    }
+}
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+ACCOUNT_LOGIN_METHODS = {"email"}          # allauth 65.x syntax
+ACCOUNT_SIGNUP_FIELDS = ["email*"]         # allauth 65.x syntax
+ACCOUNT_EMAIL_VERIFICATION = "none"
+\`\`\`
+
+---
+
+## Step 3: urls.py — CRITICAL media serving fix
+
+**DO NOT use \`django.conf.urls.static.static()\` for media in production.**
+It has a hidden \`if not settings.DEBUG: return []\` inside — silently returns nothing when \`DEBUG=False\`.
+
+Use \`re_path\` + \`django.views.static.serve\` directly:
+
+\`\`\`python
+from django.conf import settings
+from django.contrib import admin
+from django.urls import path, re_path, include
+from django.views.static import serve
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("accounts/", include("allauth.urls")),
+    path("", include("app.urls")),
+]
+
+# Serve media files in all environments.
+# static() returns [] when DEBUG=False — use re_path+serve instead.
+# Acceptable for small sites; use object storage for high traffic.
+urlpatterns += [
+    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
+]
+\`\`\`
+
+---
+
+## Step 4: App code (models, views, urls, templates)
+
+### app/models.py — example with ImageField
+\`\`\`python
+from django.db import models
+from django.contrib.auth.models import User
+
+class Note(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    image = models.ImageField(upload_to="notes/", blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+\`\`\`
+
+### app/views.py
+\`\`\`python
+from django.shortcuts import render, redirect
+from django.contrib.auth import login, logout
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.decorators import login_required
+from .models import Note
+
+def home(request):
+    notes = Note.objects.filter(user=request.user) if request.user.is_authenticated else []
+    return render(request, "app/home.html", {"notes": notes})
+
+@login_required
+def add_note(request):
+    if request.method == "POST":
+        title = request.POST.get("title", "").strip()
+        body = request.POST.get("body", "").strip()
+        image = request.FILES.get("image")
+        if title:
+            Note.objects.create(user=request.user, title=title, body=body, image=image)
+    return redirect("home")
+
+def register(request):
+    if request.method == "POST":
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            return redirect("home")
+    else:
+        form = UserCreationForm()
+    return render(request, "registration/register.html", {"form": form})
+
+def logout_view(request):
+    logout(request)
+    return redirect("home")
+\`\`\`
+
+### app/urls.py
+\`\`\`python
+from django.urls import path
+from django.contrib.auth import views as auth_views
+from . import views
+
+urlpatterns = [
+    path("", views.home, name="home"),
+    path("notes/add/", views.add_note, name="add_note"),
+    path("register/", views.register, name="register"),
+    path("login/", auth_views.LoginView.as_view(), name="login"),
+    path("logout/", views.logout_view, name="logout"),
+]
+\`\`\`
+
+### app/admin.py
+\`\`\`python
+from django.contrib import admin
+from .models import Note
+
+admin.site.register(Note)
+\`\`\`
+
+### templates/app/home.html — with static CSS, file upload, image display, Google login
+\`\`\`html
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My Site</title>
+  <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+<body>
+  <h1>My Site</h1>
+
+  {% if user.is_authenticated %}
+    <p>Hello, {{ user.username }}.
+      <a href="{% url 'logout' %}">Logout</a> |
+      <a href="/admin/">Admin</a>
+    </p>
+
+    <h2>Add Note</h2>
+    <form method="post" action="{% url 'add_note' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input name="title" placeholder="Title" required><br>
+      <textarea name="body" placeholder="Body"></textarea><br>
+      <input type="file" name="image" accept="image/*"><br>
+      <button type="submit">Save</button>
+    </form>
+
+    <h2>Your Notes</h2>
+    {% for note in notes %}
+      <div class="note">
+        <strong>{{ note.title }}</strong> — {{ note.body }}
+        {% if note.image %}
+          <br><img src="{{ note.image.url }}" style="max-width:300px;">
+        {% endif %}
+        <br><small>{{ note.created_at }}</small>
+      </div>
+    {% empty %}
+      <p>No notes yet.</p>
+    {% endfor %}
+
+  {% else %}
+    <p>
+      <a href="{% url 'login' %}">Login</a> |
+      <a href="{% url 'register' %}">Register</a> |
+      <a href="/accounts/google/login/?next=/">Login with Google</a>
+    </p>
+  {% endif %}
+</body>
+</html>
+\`\`\`
+
+### templates/registration/login.html
+\`\`\`html
+<h1>Login</h1>
+<form method="post">{% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Login</button>
+</form>
+<p><a href="{% url 'register' %}">Register</a> |
+   <a href="/accounts/google/login/?next=/">Login with Google</a></p>
+\`\`\`
+
+### templates/registration/register.html
+\`\`\`html
+<h1>Register</h1>
+<form method="post">{% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Register</button>
+</form>
+<p><a href="{% url 'login' %}">Login</a></p>
+\`\`\`
+
+---
+
+## Step 5: build.sh
+
+**CRITICAL**: Do NOT run \`migrate\` in build.sh — disk is read-only during build.
+
+\`\`\`bash
+#!/usr/bin/env bash
+set -o errexit
+
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python manage.py collectstatic --no-input
+\`\`\`
+
+**CRITICAL**: Mark executable in git (Windows doesn't track permissions):
+\`\`\`powershell
+git update-index --chmod=+x build.sh
+\`\`\`
+
+---
+
+## Step 6: render.yaml
+
+\`\`\`yaml
+services:
+  - type: web
+    name: mysite
+    runtime: python
+    plan: starter
+    branch: main
+    buildCommand: ./build.sh
+    startCommand: >-
+      python manage.py migrate &&
+      python manage.py createsuperuser --noinput || true &&
+      gunicorn mysite.wsgi:application --bind 0.0.0.0:$PORT
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DEBUG
+        value: "False"
+      - key: PERSISTENT_ROOT
+        value: /var/data
+      - key: ALLOWED_HOSTS
+        value: <service-name>.onrender.com
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://<service-name>.onrender.com
+      - key: SECRET_KEY
+        sync: false
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+    disk:
+      name: mysite-disk
+      mountPath: /var/data
+      sizeGB: 1
+\`\`\`
+
+Key notes:
+- \`migrate\` in \`startCommand\` — disk mounted at runtime only
+- \`createsuperuser --noinput || true\` — skips if user already exists
+- \`sync: false\` — Render prompts for value at deploy time, never committed
+
+---
+
+## Step 7: .gitignore
+
+\`\`\`gitignore
+.venv/
+env/
+__pycache__/
+*.pyc
+.env
+.env.*
+db.sqlite3
+media/
+staticfiles/
+.vscode/
+.idea/
+.DS_Store
+*.log
+\`\`\`
+
+---
+
+## Step 8: Git + GitHub
+
+\`\`\`powershell
+git init
+git add .gitignore requirements.txt
+git commit -m "Initial: gitignore, requirements"
+git add app\\ mysite\\ manage.py build.sh render.yaml static\\ templates\\
+git commit -m "Scaffold Django project"
+git branch -M main
+git remote add origin https://github.com/<user>/<repo>.git
+git push -u origin main
+\`\`\`
+
+---
+
+## Step 9: Render Blueprint deploy
+
+1. Render dashboard → **New** → **Blueprint**
+2. Connect GitHub → select repo
+3. Render reads \`render.yaml\` automatically
+4. Fill in **Blueprint name** (any label)
+5. Fill in \`SECRET_KEY\` — generate with:
+   \`\`\`powershell
+   .\\env\\Scripts\\python.exe -c "import secrets; print(secrets.token_urlsafe(50))"
+   \`\`\`
+6. Fill in \`DJANGO_SUPERUSER_*\` env vars
+7. Fill in \`GOOGLE_CLIENT_ID\` and \`GOOGLE_CLIENT_SECRET\` (or leave blank for later)
+8. Review cost: ~$7.25/month → **Deploy Blueprint**
+
+---
+
+## Step 10: Post-deploy fixes
+
+### Fix ALLOWED_HOSTS
+Render assigns unpredictable hostnames (e.g. \`mysite-0tu0.onrender.com\`).
+After first deploy: Render → Environment → update \`ALLOWED_HOSTS\` and \`CSRF_TRUSTED_ORIGINS\`.
+
+### Fix startCommand 
+\`render.yaml\` changes do NOT override a command already set in dashboard.
+Must edit manually: Render → **Settings** → **Start Command**.
+
+---
+
+## Step 11: Google OAuth setup
+
+1. **Google Cloud Console** → New project → APIs & Services → OAuth consent screen → External
+2. Credentials → **Create OAuth Client ID** → Web application
+3. Authorized redirect URI: \`https://<service>.onrender.com/accounts/google/login/callback/\`
+4. Copy \`client_id\` and \`client_secret\`
+5. Render → Environment → set \`GOOGLE_CLIENT_ID\` and \`GOOGLE_CLIENT_SECRET\`
+6. **Admin → Sites** → change \`example.com\` to actual hostname (no \`https://\`)
+7. Deploy
+
+### Google auth behavior (proven)
+- **New user, no prior account** → clicks Google → instant login, account auto-created, no form
+- **Existing user whose email matches Google** → one-time confirmation form → seamless forever after
+- One-time form is a **security feature** — prevents account hijacking
+
+### allauth 65.x settings (breaking change)
+Old \`ACCOUNT_EMAIL_REQUIRED\` + \`ACCOUNT_AUTHENTICATION_METHOD\` are DEPRECATED. Use:
+\`\`\`python
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*"]
+\`\`\`
+
+---
+
+## Step 12: Media files (ImageField + Pillow)
+
+### Requirements
+Add \`Pillow>=10.0,<12\` to \`requirements.txt\` for \`ImageField\`.
+
+### Settings (already in Step 2)
+\`\`\`python
+MEDIA_URL = "/media/"
+MEDIA_ROOT = MEDIA_DIR      # /var/data/media in production
+\`\`\`
+
+### URLs — the critical fix (already in Step 3)
+**DO NOT** use \`static(MEDIA_URL, document_root=MEDIA_ROOT)\` — it returns \`[]\` when \`DEBUG=False\`.
+Use \`re_path\` + \`serve\` instead.
+
+### Upload form
+Must include \`enctype="multipart/form-data"\` on the form tag.
+Access file in view with \`request.FILES.get("image")\`.
+
+### Persistence
+Media files live on the persistent disk at \`/var/data/media/notes/\`.
+They survive redeploys.
+
+---
+
+## Known gotchas — all proven in practice
+
+| # | Gotcha | Fix |
+|---|--------|-----|
+| 1 | \`build.sh\` not executable on Linux | \`git update-index --chmod=+x build.sh\` |
+| 2 | \`mkdir /var/data\` fails during build (read-only) | \`try/except OSError: pass\` in settings.py |
+| 3 | \`migrate\` fails during build (can't open DB) | Move \`migrate\` to \`startCommand\` |
+| 4 | 400 Bad Request after deploy | \`ALLOWED_HOSTS\` has wrong hostname — check actual Render URL |
+| 5 | Blueprint parse error | Billing must be set on Render account before Blueprint works |
+| 6 | Render sees all GitHub repos | Restrict: GitHub → Settings → Applications → Authorized OAuth Apps |
+| 7 | Workspace plan ≠ service plan | Hobby workspace OK; \`plan: starter\` = service compute tier |
+| 8 | \`startCommand\` not updated by yaml push | Edit manually in Render → Settings → Start Command |
+| 9 | \`createsuperuser\` crashes on redeploy | Add \`\\|\\| true\` — harmless if user exists |
+| 10 | allauth deprecated settings warnings | Use 65.x API: \`ACCOUNT_LOGIN_METHODS\`, \`ACCOUNT_SIGNUP_FIELDS\` |
+| 11 | Google login shows signup form for existing user | Expected — one-time link confirmation, seamless after |
+| 12 | \`Sites\` record still says \`example.com\` | Admin → Sites → update to actual hostname |
+| 13 | Media files 404 in production | \`static()\` returns \`[]\` when \`DEBUG=False\` — use \`re_path\` + \`serve\` |
+| 14 | Auto-deploy not triggering | Render GitHub **App** must be installed (not just OAuth). Go to \`github.com/apps/render/installations/new\` → install for your account → select repo. Without it, no webhook = no auto-deploy. |
+| 15 | SSH blocked by corporate firewall | Port 22 blocked on a corporate network. Use Render API (\`api.render.com\`) over HTTPS instead, or Render Web Shell in browser. |
+| 16 | DNS registrar form appends domain to host | When adding CNAME at Israeli registrar (LiveDNS), enter just \`www\` not \`www.example.co.il\` — the form auto-appends the domain. |
+| 17 | \`django check --deploy\` warns about HSTS | Add \`SECURE_HSTS_SECONDS\`, \`SECURE_HSTS_INCLUDE_SUBDOMAINS\`, \`SECURE_HSTS_PRELOAD\` to settings (all gated on \`not DEBUG\`). |
+| 18 | Google login fails on custom domain (\`redirect_uri_mismatch\`) | Add new domain to Google Cloud Console → OAuth Client → Authorized redirect URIs: \`https://domain/accounts/google/login/callback/\`. Also update Django Admin → Sites → change hostname to new domain. |
+| 19 | \`.co.il\` \`serverHold\` lasts up to 3 days | ISOC-IL updates 4x/day (07:00, 13:00, 17:00, 21:00 IL time). New \`.co.il\` domains can take up to 72h. Not a misconfiguration — just wait. Contact LiveDNS support if >48h. |
+| 20 | Deploy \`update_failed\` with no obvious reason | NEVER guess — fetch logs first (see "Debug a failed deploy" below). Build can succeed but runtime crashes (missing pkg, migration error, etc). |
+| 21 | \`ModuleNotFoundError\` at runtime despite pkg in \`requirements.txt\` | Templatetag library failed to import (e.g. \`import markdown\`). Django's \`manage.py\` system check loads all templatetags → ANY import error in any tag module crashes EVERY management command including \`migrate\`. Add missing pkg to \`requirements.txt\`. |
+| 22 | \`InconsistentMigrationHistory: Migration X is applied before its dependency Y\` | "Ghost migration" — a higher migration is recorded applied, but a lower one isn't. Happens after manual DB surgery or restoring partial backups. Fix by inserting missing rows into \`django_migrations\` BEFORE \`migrate\` runs (see "Schema/migration self-repair" below). Errors chain backwards — fix 0010 → 0009 surfaces → 0008 surfaces, etc. Fake-apply the whole range at once. |
+| 23 | \`render.yaml\` startCommand parens dropped at runtime | Render container restart logs showed \`migrate && createsuperuser \\|\\| true && gunicorn\` (no parens) on retry. Operator precedence makes gunicorn boot even when migrate fails. Don't rely on parens for ordering — keep startCommand simple or put complex logic in \`AppConfig.ready()\`. |
+| 24 | PATCH startCommand via API silently no-ops | Wrong field path. Correct: \`serviceDetails.envSpecificDetails.startCommand\` (NOT \`serviceDetails.startCommand\`). |
+
+---
+
+## Debug a failed deploy — MANDATORY first step
+
+**Rule: when a deploy fails, FETCH LOGS BEFORE TOUCHING CODE.** No guessing, no "let me try X". Read the actual error first. This session burned 5+ deploys violating this rule.
+
+### Render logs API (works over HTTPS, bypasses SSH firewall)
+
+The logs endpoint is **owner-scoped**, not service-scoped. Both query params required:
+
+\`\`\`powershell
+$key   = $env:RENDER_API_KEY                        # or paste literal
+$svc   = "srv-d6ttohq4d50c73chm4tg"                 # service id
+$owner = "tea-d6ttfncr85hc73aapmhg"                 # team/owner id (from service detail)
+$end   = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+$start = [DateTime]::UtcNow.AddMinutes(-15).ToString("yyyy-MM-ddTHH:mm:ssZ")
+$url   = "https://api.render.com/v1/logs?ownerId=$owner&resource=$svc&startTime=$start&endTime=$end&limit=200"
+$j     = (Invoke-WebRequest -Uri $url -Headers @{Authorization="Bearer $key"} -UseBasicParsing).Content | ConvertFrom-Json
+$j.logs | Sort-Object timestamp | ForEach-Object { "$($_.timestamp.Substring(11,8)) $($_.message)" } | Select-Object -Last 60
+\`\`\`
+
+To find the owner id: \`Invoke-RestMethod "https://api.render.com/v1/services/$svc" -Headers @{Authorization="Bearer $key"}\` → \`ownerId\` field.
+
+Useful filter — show only deploy lifecycle markers:
+\`\`\`powershell
+$j.logs | Sort-Object timestamp | Where-Object { $_.message -match "Running |Exited|Traceback|Error|restarted|==>" } | ForEach-Object { "$($_.timestamp.Substring(11,8)) $($_.message)" }
+\`\`\`
+
+### Note
+- \`/deploys/{id}/logs\` endpoint returns 404 — does not exist.
+- Build phase logs and runtime logs are both in the same \`/v1/logs\` stream, filterable by timestamp.
+- One-off jobs (\`/services/{id}/jobs\` POST) let you test commands in isolation; their output also lands in the same log stream.
+
+### Patch startCommand via API (when dashboard edit isn't practical)
+\`\`\`powershell
+$body = @{ serviceDetails = @{ envSpecificDetails = @{ startCommand = "python manage.py migrate && gunicorn mysite.wsgi:application --bind 0.0.0.0:\`$PORT" } } } | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Uri "https://api.render.com/v1/services/$svc" -Method Patch -Headers @{Authorization="Bearer $key"; "Content-Type"="application/json"} -Body $body
+\`\`\`
+
+---
+
+## Schema / migration self-repair on boot
+
+If prod DB has missing columns/tables OR ghost migration history rows (often after restoring backups or manual surgery), you can't reach a Django shell to fix it because every \`manage.py\` command crashes on \`check_consistent_history\`. The fix runs **before** Django's checks: in \`AppConfig.ready()\` using raw \`sqlite3\`.
+
+### Pattern (proven on babook.co.il)
+
+\`app/apps.py\`:
+\`\`\`python
+import sqlite3
+from django.apps import AppConfig as DjangoAppConfig
+
+
+def _repair_schema(db_path: str) -> None:
+    """Patch missing schema and fake-apply ghost migrations BEFORE migrate runs."""
+    try:
+        conn = sqlite3.connect(db_path, timeout=10)
+        c = conn.cursor()
+        # bail if django_migrations table doesn't exist yet (first ever deploy)
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='django_migrations'")
+        if not c.fetchone():
+            conn.close()
+            return
+
+        # Idempotent ALTER TABLE for missing columns
+        c.execute("PRAGMA table_info(app_course)")
+        cols = {row[1] for row in c.fetchall()}
+        if "title_en" not in cols:
+            c.execute("ALTER TABLE app_course ADD COLUMN title_en varchar(200) NOT NULL DEFAULT ''")
+        # ... repeat for each known missing column
+
+        # Idempotent CREATE TABLE for missing tables
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='app_newslettersubscriber'")
+        if not c.fetchone():
+            c.execute("""CREATE TABLE app_newslettersubscriber ( ... )""")
+
+        # Fake-apply ghost migrations so migrate's check_consistent_history passes.
+        # IMPORTANT: errors chain backwards — list every migration from the lowest
+        # missing one up to HEAD, not just the one in today's error message.
+        for mig in [
+            "0005_copilot_seats", "0006_ai_chat", "0007_billing_entitlement",
+            "0008_corporate_lead", "0009_newslettersubscriber",
+            "0010_course_video_enrollment_enhancements",
+            "0011_lesson_quiz_certificate", "0012_quiz_passed_field",
+            "0013_coursematerial",
+        ]:
+            c.execute("SELECT id FROM django_migrations WHERE app='app' AND name=?", [mig])
+            if not c.fetchone():
+                c.execute(
+                    "INSERT INTO django_migrations (app, name, applied) VALUES (?,?,?)",
+                    ["app", mig, "2024-01-01 00:00:00+00:00"],
+                )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # never break startup — let migrate surface the real error
+
+
+class AppConfig(DjangoAppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "app"
+
+    def ready(self):
+        from django.conf import settings
+        db_path = settings.DATABASES.get("default", {}).get("NAME", "")
+        if db_path and db_path != ":memory:":
+            _repair_schema(db_path)
+\`\`\`
+
+### Why this works
+- \`ready()\` runs for **every** \`manage.py\` invocation, including \`migrate\` itself, BEFORE the consistency check.
+- Raw \`sqlite3\` — no Django ORM, so it works even when models don't match schema yet.
+- Idempotent — safe to leave in code permanently; subsequent boots no-op cleanly.
+- \`try/except Exception: pass\` — never break startup; if something's off, let the real \`migrate\` surface the error.
+
+### When to remove this code
+Leave it in. The cost is negligible (a few \`SELECT\`s on each boot) and it's a safety net for future schema drift / restores.
+
+---
+
+## Iterative debug discipline (lessons from babook.co.il outage)
+
+When chasing a deploy failure, follow this loop strictly:
+
+1. **Fetch logs** for the failed deploy id. Do NOT skip.
+2. **Read the actual last error** — not the commit message, not the notification banner. The notification often quotes the OLD error.
+3. **Make ONE targeted fix** for that exact error.
+4. **Commit + push + poll deploy status**.
+5. **Fetch logs again** — go to step 1.
+
+Anti-patterns observed and to avoid:
+- Adding unrelated "improvements" while fixing one bug.
+- Pushing a "let's see if this works" speculative fix.
+- Assuming the error from the failure notification is current — re-fetch logs.
+- Cherry-picking only the migration mentioned in the error when there's clearly a backwards chain — fake-apply the whole range at once.
+
+---
+
+## Domain setup (after site is working)
+
+1. Render → **mysite** → **Settings** → **Custom Domains** → Add both \`example.com\` and \`www.example.com\`
+2. Render shows required DNS records. At your registrar:
+   - **Root domain** (\`@\`): Add **A record** → \`216.24.57.1\` (CNAME not allowed on root by most providers)
+   - **www subdomain**: Add **CNAME** → \`<service>.onrender.com\` (enter just \`www\` — registrar appends domain)
+3. Update env vars **on Render dashboard** (yaml push won't override existing values — gotcha #8):
+   - \`ALLOWED_HOSTS\`: \`<service>.onrender.com,example.com,www.example.com\`
+   - \`CSRF_TRUSTED_ORIGINS\`: all three with \`https://\`
+4. For \`.co.il\` domains: ISOC-IL updates DNS 4x/day (07:00, 13:00, 17:00, 21:00 Israel time). New domains can have \`serverHold\` for **up to 72h** — not a mistake, just wait.
+5. Render auto-provisions HTTPS via Let's Encrypt after DNS resolves.
+6. **Update Google OAuth** for new domain: Google Cloud Console → Credentials → OAuth Client → add \`https://<domain>/accounts/google/login/callback/\` to Authorized redirect URIs.
+7. **Update Django Admin → Sites** → change hostname from \`.onrender.com\` to new domain.
+
+---
+
+## Smoke test checklist
+
+- [ ] Homepage loads
+- [ ] \`/admin/\` loads and login works
+- [ ] CSS loads (WhiteNoise working)
+- [ ] Register new user → login works
+- [ ] Google login works (new user — no form)
+- [ ] Add a note with an image → image displays
+- [ ] Data and images survive a redeploy (persistent disk)
+- [ ] No errors in Render logs
+
+---
+
+## Render API (remote operations from local terminal)
+
+When SSH is blocked (corporate firewall), use the Render REST API over HTTPS.
+
+### Setup
+1. Render → Account Settings → **API Keys** → Create API Key
+2. Store as user env var: \`[System.Environment]::SetEnvironmentVariable('RENDER_API_KEY', '<key>', 'User')\`
+
+### List services
+\`\`\`powershell
+Invoke-RestMethod -Uri "https://api.render.com/v1/services?limit=10" -Headers @{Authorization="Bearer $env:RENDER_API_KEY"}
+\`\`\`
+
+### Run one-off job (e.g. django check --deploy)
+\`\`\`powershell
+$body = @{startCommand="python manage.py check --deploy"; planOverride="starter"} | ConvertTo-Json
+Invoke-RestMethod -Uri "https://api.render.com/v1/services/<service-id>/jobs" -Method Post -Headers @{Authorization="Bearer $env:RENDER_API_KEY"; "Content-Type"="application/json"} -Body $body
+\`\`\`
+
+### Poll job status
+\`\`\`powershell
+Invoke-RestMethod -Uri "https://api.render.com/v1/services/<service-id>/jobs/<job-id>" -Headers @{Authorization="Bearer $env:RENDER_API_KEY"}
+\`\`\`
+
+Note: Job logs are not available via API — use Render Web Shell to see output.
+
+---
+
+## Django shell (via Render Web Shell)
+
+For direct DB operations, use the Web Shell in the Render dashboard:
+
+\`\`\`bash
+python manage.py shell
+\`\`\`
+
+\`\`\`python
+from django.contrib.auth.models import User
+from app.models import Note
+
+User.objects.values_list('id', 'username')          # list users
+u = User.objects.get(username='admin')
+Note.objects.create(user=u, title='Test', body='From shell')  # create record
+Note.objects.all().values('id', 'title', 'user__username')    # verify
+\`\`\`
+
+---
+
+## DevOps loop
+
+\`\`\`powershell
+git add <files>
+git commit -m "description"
+git push
+# Render auto-deploys from main
+\`\`\`
+
+Rollback: \`git revert <bad-commit>\` → push → Render deploys the revert.
+`
+  },
+
+  // ── Managed Project Setup ──
+  {
+    id:          'managed-project-setup',
+    name:        'Managed Project Setup',
+    description: 'Scaffold a new managed project with spec, backlog, traceability, and manager process. Creates the full docs/ structure (spec.md, backlog.md, manager.md) with numbered requirements, EPICs, sprints, features, and cross-references. Includes interview phase to gather project goals. TRIGGER: user says \'new managed project\', \'setup managed project\', \'create spec and backlog\', \'init project with tracking\', \'scaffold project with spec\', \'create a project like ClaudeLauncher\', or \'managed project\'.',
+    category:    'Productivity',
+    tags:        ['project', 'spec', 'backlog', 'requirements', 'planning', 'traceability'],
+    icon:        '📋',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: managed-project-setup
+description: "Scaffold a new managed project with spec, backlog, traceability, and manager process. Creates the full docs/ structure (spec.md, backlog.md, manager.md) with numbered requirements, EPICs, sprints, features, and cross-references. Includes interview phase to gather project goals. TRIGGER: user says 'new managed project', 'setup managed project', 'create spec and backlog', 'init project with tracking', 'scaffold project with spec', 'create a project like ClaudeLauncher', or 'managed project'."
+---
+
+<MANDATORY>
+When this skill is used, begin your response with:
+"[Using Skill: managed-project-setup]" followed by a brief statement of what you're doing.
+This is non-negotiable. Do it BEFORE any other output.
+</MANDATORY>
+
+# Managed Project Setup
+
+Scaffold a fully-tracked project workspace with spec, backlog, traceability matrix, and manager process file. This is the user's standard approach for non-trivial tools.
+
+## Overview
+
+A managed project has four core docs that work together:
+
+| File | Purpose |
+|------|---------|
+| \`docs/spec.md\` | Requirements (REQ-xx), design, constraints, acceptance |
+| \`docs/backlog.md\` | EPICs, Sprints, Features (F-xxx), traceability matrix, status |
+| \`docs/manager.md\` | The process: sprint workflow, rules, definitions of done |
+| \`docs/dashboard.html\` | Live progress visualization (updated every sprint) |
+
+The traceability chain: **REQ → Feature → Test → Code**. No orphans at any level.
+
+## Phase 1: Interview
+
+Before creating anything, interview the user to gather:
+
+1. **What is this tool?** (one-sentence elevator pitch)
+2. **Who is it for?** (target users)
+3. **Core capabilities** (3-7 bullet points of what it must do)
+4. **Technology constraints** (language, framework, platform, packaging)
+5. **Distribution model** (exe, web app, script, npm package, etc.)
+6. **Security/secret management needs** (keys, tokens, auth)
+7. **UX philosophy** (minimal? feature-rich? CLI? GUI?)
+
+Use \`vscode_askQuestions\` for structured input, or accept freeform text.
+
+After gathering answers, proceed to Phase 2.
+
+## Phase 2: Generate Spec
+
+Create \`docs/spec.md\` following this structure:
+
+\`\`\`markdown
+# <Project Name> — Product Specification
+
+**Version:** 1.0 Draft
+**Date:** <today>
+**Status:** Under Review
+
+---
+
+## 1. Overview
+<elevator pitch + design principle>
+
+## 2. <Category 1> (e.g., Distribution & Packaging)
+| Requirement | Detail |
+...
+
+## 3. <Category 2> (e.g., Secret Management)
+...
+
+## N. Out of Scope (v1)
+- items explicitly deferred
+
+## N+1. UX Principles
+1. ...
+\`\`\`
+
+### Spec Rules
+
+- Every table row or bullet that states a "shall" or "must" is a requirement.
+- Requirements will be numbered REQ-01, REQ-02, ... in the backlog (not in the spec itself to keep it readable).
+- Include wireframe layouts as ASCII art where applicable.
+- End with a UX Principles section (3-5 rules for consistent decision-making).
+
+## Phase 3: UX Review
+
+After generating the spec, switch to UX expert mode:
+
+1. Review the spec for UX anti-patterns:
+   - Too many menus for a simple tool?
+   - Redundant UI elements?
+   - Multi-step flows that should be combined?
+   - Power-user features blocking the happy path?
+2. Present 5-10 specific UX improvement suggestions with rationale.
+3. Ask the user which to apply.
+4. Update the spec.
+
+## Phase 4: Generate Backlog
+
+Create \`docs/backlog.md\` following this structure:
+
+\`\`\`markdown
+# <Project Name> — Implementation Backlog
+
+**Created:** <today>
+**Tracks:** [docs/spec.md](spec.md) rev 1
+
+---
+
+## Spec Requirements Index
+
+| ID | Spec Section | Requirement |
+|----|-------------|-------------|
+| REQ-01 | §2 | ... |
+...
+
+## EPIC 1: <Name>
+*<one-line description>*
+
+### Sprint 1 — <Title>
+
+| ID | Feature | Reqs | Description |
+|----|---------|------|-------------|
+| F-001 | ... | REQ-xx, REQ-yy | ... |
+...
+
+## Sprint Plan Summary
+| Sprint | EPIC | Focus | Features |
+...
+
+## Traceability Matrix
+| REQ | Feature(s) |
+...
+
+## Status Tracking
+| Feature | Status | Sprint | Notes |
+...
+\`\`\`
+
+### Backlog Rules
+
+- Every requirement from the spec gets a REQ-xx ID.
+- Every REQ maps to at least one Feature (F-xxx).
+- Every Feature maps back to its REQs.
+- Sprints are ordered by dependency (foundation first, polish last).
+- The traceability matrix is the contract: 100% coverage required.
+- Status tracking table lists every feature with Not Started / In Progress / Completed.
+
+## Phase 5: Generate Manager
+
+Create \`docs/manager.md\` with the sprint workflow process. Use ClaudeLauncher's manager as the template:
+
+### Required Sections
+
+1. **Cardinal Rules** — git push rules, env usage, tracking integrity, no ad-hoc edits
+2. **Files This Process Touches** — table of docs + their roles
+3. **The Sprint Workflow** — 8 steps:
+   - Step 1: Context Load
+   - Step 2: Sprint Planning
+   - Step 3: Write Tests First
+   - Step 4: Implement
+   - Step 5: Full Regression
+   - Step 6: Sprint Review & Demo
+   - Step 7: Post-Mortem
+   - Step 8: Advance
+4. **Mid-Sprint Changes** — Path A (fix now) vs Path B (defer), formal process for both
+5. **Tracking Integrity Checks** — table of invariants to verify each sprint
+6. **Quick Command Map** — what the user says → what Copilot does
+7. **Definition of Done** — Sprint level and Epic level checklists
+8. **Environment & Technical Rules** — venv, package management, test runner, build, etc.
+9. **Project Structure (Target)** — ASCII tree of expected final layout
+
+### Manager Customization
+
+Adapt these sections to the project's technology:
+- If it's a web app: add deploy procedures, rollback, staging
+- If it's a GUI: add build/package step, demo instructions
+- If it's a library: add publish step, API docs generation
+- If it's hardware-related: add simulation, synthesis steps
+
+## Phase 6: Generate Dashboard
+
+Create \`docs/dashboard.html\` — a self-contained HTML file showing live project progress.
+
+### Dashboard Contents
+
+- **Overall progress bar** — features completed / total (percentage)
+- **Epic breakdown** — per-epic progress (bar chart or table)
+- **Current sprint** — which sprint is active, features in progress
+- **Status counts** — Not Started / In Progress / Completed
+- **Upcoming** — next sprint preview
+- **Last updated** timestamp
+
+### Dashboard Rules
+
+- Single HTML file, no external dependencies (inline CSS/JS).
+- Data is hardcoded in a \`<script>\` block as JSON — updated each sprint by Copilot.
+- Opens directly in a browser (no server needed).
+- Styled to match project theme (dark/light).
+- Updated at the end of every sprint (Step 8 in the workflow).
+
+### Template Structure
+
+\`\`\`html
+<!DOCTYPE html>
+<html>
+<head><title>Project Dashboard</title></head>
+<body>
+  <h1>Project Name — Progress Dashboard</h1>
+  <div id="progress"></div>
+  <div id="epics"></div>
+  <div id="current-sprint"></div>
+  <script>
+    const data = { /* updated each sprint */ };
+    // render logic
+  </script>
+</body>
+</html>
+\`\`\`
+
+## Phase 7: Verify Integrity
+
+After all four docs are created, run the traceability check:
+
+1. Count REQs in spec vs REQs in backlog → must match.
+2. Every REQ has at least one Feature → no orphans.
+3. Every Feature traces to at least one REQ → no untraced work.
+4. Sprint dependency order makes sense (no sprint depends on a later sprint).
+5. Report: "X requirements, Y features, Z sprints. Full coverage verified."
+
+## Phase 8: Handoff
+
+Present summary to the user:
+- Total requirements / features / sprints
+- Estimated sprint flow (what comes first, what's last)
+- Any open questions or decisions deferred
+- Dashboard created and ready to track
+- Ask: "Spec, backlog, and dashboard ready. Want me to start Sprint 1?"
+
+---
+
+## Reference Implementation
+
+The canonical example of this process in action:
+- \`C:\\Projects\\ClaudeLauncher\\docs\\spec.md\`
+- \`C:\\Projects\\ClaudeLauncher\\docs\\backlog.md\`
+- \`C:\\Projects\\ClaudeLauncher\\docs\\manager.md\`
+- \`C:\\Projects\\ClaudeLauncher\\docs\\dashboard.html\`
+
+Use these as structural templates. Adapt content to the new project's domain.
+
+---
+
+## Anti-Patterns to Avoid
+
+- **Don't over-spec.** If the project is simple (5-10 features), don't create 13 sprints. Scale the process to the project size.
+- **Don't spec implementation details.** Spec says WHAT, not HOW. Implementation lives in code.
+- **Don't create empty sprints.** Every sprint must deliver user-visible value.
+- **Don't front-load all polish.** Foundation → working features → polish. Never polish before it works.
+- **Don't skip the UX review.** Even CLI tools benefit from UX thinking (error messages, flag naming, help text).
+`
+  },
+
+  // ── Automation Dedup Guard ──
+  {
+    id:          'automation-dedup-guard',
+    name:        'Automation Dedup Guard',
+    description: 'Prevent duplicate sends and posts in automation workflows.',
+    category:    'Productivity',
+    tags:        ['automation', 'dedup', 'safety', 'idempotency', 'guardrails'],
+    icon:        '🛡️',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Automation Dedup Guard
+description: >
+  Prevent duplicate sends and posts in automation workflows.
+---
+
+# Automation Dedup Guard
+
+## Copilot Automation: Preventing Duplicate Sends & Posts
+
+**Source**: Drory Shohat (email, 2026-02-11)
+**For**: Anyone building AI-driven automation (Copilot, LLM agents) that sends emails or posts
+
+---
+
+## The Bug
+
+When GitHub Copilot runs PowerShell commands in VS Code, the terminal output sometimes gets **truncated** (cut off). Copilot interpreted this as a failure and **retried the command** — but the first attempt had already succeeded.
+
+**Result**: Duplicate posts on Viva Engage and duplicate emails in Outlook.
+
+---
+
+## Root Cause
+
+**Terminal output truncation ≠ command failure.**
+
+Both \`Outlook .Send()\` and Yammer \`Invoke-RestMethod\` execute fully even when the terminal output appears cut off.
+
+---
+
+## The Fix
+
+| # | Fix | Details |
+|---|-----|---------|
+| 1 | **Send-guard variables** | Set \`$emailSent = $true\` after sending; check before any retry |
+| 2 | **Verify-before-retry** | Check Sent Items folder or read latest Yammer messages before re-executing |
+| 3 | **Dedup in sync script** | \`Sync-CtrlAltVent.ps1\` checks if a similar message was posted in the last 5 minutes |
+| 4 | **Updated Copilot instructions** | Explicit rules in \`.github/copilot-instructions.md\` to NEVER retry on truncated output |
+
+---
+
+## Rule of Thumb
+
+> If the command ran without a PowerShell error (no red text, no catch block triggered), it **succeeded** — regardless of what the terminal output looks like.
+
+---
+
+## Lessons for AI Automation
+
+These principles apply to **any** AI-driven automation, not just Copilot:
+
+1. **Treat API calls as non-idempotent by default** — sending = side effect
+2. **Always verify state before retrying** — read before write
+3. **Truncated output ≠ failure** — check the actual result
+4. **Use guard variables** — track whether an action has already been performed
+5. **Add dedup guards in scripts** — check for recent duplicates before executing
+
+---
+
+## Example: Send-Guard Pattern (PowerShell)
+
+\`\`\`powershell
+$emailSent = $false
+
+if (-not $emailSent) {
+    $mail = $outlook.CreateItem(0)
+    $mail.To = "recipient@example.com"
+    $mail.Subject = "Subject"
+    $mail.Body = "Content"
+    $mail.Send()
+    $emailSent = $true
+    Write-Host "Email sent successfully"
+}
+\`\`\`
+
+## Example: Verify-Before-Retry Pattern
+
+\`\`\`powershell
+# Before retrying a Viva Engage post, check if it already exists
+$recentPosts = Get-VivaEngagePosts -Last 5
+$alreadyPosted = $recentPosts | Where-Object { $_.Body -like "*your unique content*" }
+
+if (-not $alreadyPosted) {
+    # Safe to post
+    Invoke-RestMethod -Uri $postUrl -Method POST -Body $body
+}
+\`\`\`
+
+---
+
+**Created**: February 11, 2026
+**Author**: Drory Shohat
+`
+  },
+
+  // ── Docker Basics ──
+  {
+    id:          'docker-basics',
+    name:        'Docker Basics',
+    description: 'Run, build, and manage Docker containers. Write Dockerfiles for Python/Django apps. Use docker-compose for multi-service local dev stacks (web + db + redis). Push/pull images from Docker Hub. Manage volumes, networks, and environment variables. TRIGGER: user says "docker", "container", "dockerfile", "docker-compose", "docker run", "docker build", "containerize", "spin up a container", or "docker image".',
+    category:    'DevOps',
+    tags:        ['docker', 'container', 'dockerfile', 'compose', 'images', 'volumes'],
+    icon:        '🐳',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: docker-basics
+description: >
+  Run, build, and manage Docker containers. Write Dockerfiles for Python/Django
+  apps. Use docker-compose for multi-service local dev stacks (web + db + redis).
+  Push/pull images from Docker Hub. Manage volumes, networks, and environment
+  variables. TRIGGER: user says "docker", "container", "dockerfile", "docker-compose",
+  "docker run", "docker build", "containerize", "spin up a container", or
+  "docker image".
+---
+
+i Docker Basics — Containers, Images & Compose
+
+> **Purpose**: Package, run, and ship applications using Docker containers.
+> Works on Windows (Docker Desktop), Linux, and macOS.
+
+---
+
+ii Table of Contents
+
+1. [Quick Reference](iquick-reference)
+2. [Core Concepts](icore-concepts)
+3. [Docker CLI Essentials](idocker-cli-essentials)
+4. [Writing Dockerfiles](iwriting-dockerfiles)
+5. [Docker Compose](idocker-compose)
+6. [Volumes & Persistence](ivolumes--persistence)
+7. [Networking](inetworking)
+8. [Environment Variables & Secrets](ienvironment-variables--secrets)
+9. [Common App Recipes](icommon-app-recipes)
+10. [Corporate Proxy Setup](iintel-proxy-setup)
+11. [Troubleshooting](itroubleshooting)
+12. [Lessons Learned](ilessons-learned)
+
+---
+
+ii Quick Reference
+
+\`\`\`powershell
+i Run a container (download + start)
+docker run hello-world
+docker run -it ubuntu bash          i interactive terminal
+docker run -d -p 8080:80 nginx      i detached, port mapping
+
+i Build an image from Dockerfile in current dir
+docker build -t myapp:latest .
+
+i List running containers
+docker ps
+docker ps -a                        i including stopped
+
+i Stop / remove
+docker stop <container_id>
+docker rm <container_id>
+
+i List images
+docker images
+
+i Remove image
+docker rmi myapp:latest
+
+i Logs
+docker logs <container_id>
+docker logs -f <container_id>       i follow (like tail -f)
+
+i Exec into running container
+docker exec -it <container_id> bash
+
+i Docker Compose
+docker compose up -d                i start all services, detached
+docker compose down                 i stop and remove containers
+docker compose logs -f              i follow all service logs
+docker compose ps                   i service status
+\`\`\`
+
+---
+
+ii Core Concepts
+
+| Term | Meaning |
+|------|---------|
+| **Image** | Read-only template (like a snapshot). Built from a \`Dockerfile\`. |
+| **Container** | A running instance of an image. Isolated process. |
+| **Dockerfile** | Recipe for building an image — layer by layer. |
+| **Registry** | Image storage: Docker Hub (public), or private registries. |
+| **Volume** | Persistent storage attached to a container (survives restarts). |
+| **Network** | Virtual network connecting containers to each other or the host. |
+| **Compose** | Tool to run multi-container apps defined in \`docker-compose.yml\`. |
+
+---
+
+ii Docker CLI Essentials
+
+iii Pull & run images
+\`\`\`bash
+docker pull python:3.12-slim          i download only
+docker run python:3.12-slim python --version
+docker run -it python:3.12-slim bash  i interactive shell
+\`\`\`
+
+iii Port mapping (\`-p host:container\`)
+\`\`\`bash
+docker run -d -p 8080:80 nginx
+i now http://localhost:8080 → container port 80
+\`\`\`
+
+iii Named containers
+\`\`\`bash
+docker run -d --name my-nginx -p 8080:80 nginx
+docker stop my-nginx
+docker start my-nginx
+docker restart my-nginx
+\`\`\`
+
+iii Volume mount (\`-v host_path:container_path\`)
+\`\`\`bash
+docker run -v C:\\Projects\\myapp:/app python:3.12-slim bash
+\`\`\`
+
+iii Environment variables
+\`\`\`bash
+docker run -e DEBUG=true -e PORT=8000 myapp:latest
+\`\`\`
+
+iii Inspect / stats
+\`\`\`bash
+docker inspect <container_id>
+docker stats                          i live CPU/RAM usage
+docker top <container_id>             i running processes
+\`\`\`
+
+iii Cleanup
+\`\`\`bash
+docker system prune                   i remove stopped containers + dangling images
+docker system prune -a                i also remove unused images (frees lots of space)
+docker volume prune                   i remove unused volumes
+\`\`\`
+
+---
+
+ii Writing Dockerfiles
+
+iii Minimal Python app
+\`\`\`dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+CMD ["python", "app.py"]
+\`\`\`
+
+iii Django app (production-ready)
+\`\`\`dockerfile
+FROM python:3.12-slim
+
+i System deps
+RUN apt-get update && apt-get install -y \\
+    gcc \\
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+i Install Python deps first (layer caching — only re-runs if requirements change)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+i Copy app code
+COPY . .
+
+i Collect static files
+RUN python manage.py collectstatic --noinput
+
+EXPOSE 8000
+
+i Run with gunicorn
+CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]
+\`\`\`
+
+iii Multi-stage build (smaller final image)
+\`\`\`dockerfile
+i Stage 1: Build
+FROM python:3.12 AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+i Stage 2: Runtime (slim)
+FROM python:3.12-slim
+WORKDIR /app
+COPY --from=builder /install /usr/local
+COPY . .
+CMD ["python", "app.py"]
+\`\`\`
+
+iii Key Dockerfile rules
+- **\`COPY requirements.txt\` before \`COPY .\`** — layer caching means pip only
+  re-runs when requirements change, not on every code edit.
+- **Use slim base images** — \`python:3.12-slim\` is ~50MB vs \`python:3.12\` at ~1GB.
+- **\`--no-cache-dir\`** on pip — saves ~50MB per install.
+- **One \`CMD\`** — last CMD wins. Use \`ENTRYPOINT\` for fixed binary + \`CMD\` for default args.
+- **\`.dockerignore\`** — always add to skip \`__pycache__\`, \`.git\`, \`*.pyc\`, \`env/\`.
+
+iii .dockerignore template
+\`\`\`
+__pycache__/
+*.py[cod]
+*.egg-info/
+.git/
+.gitignore
+env/
+venv/
+.env
+*.sqlite3
+*.log
+node_modules/
+\`\`\`
+
+---
+
+ii Docker Compose
+
+Define multi-service apps in one \`docker-compose.yml\`:
+
+iii Django + PostgreSQL + Redis
+\`\`\`yaml
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=true
+    volumes:
+      - .:/app               i live code reload in dev
+    depends_on:
+      - db
+      - redis
+    command: python manage.py runserver 0.0.0.0:8000
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
+\`\`\`
+
+iii Compose commands
+\`\`\`bash
+docker compose up               i start (foreground, see logs)
+docker compose up -d            i start detached
+docker compose up --build       i rebuild images before starting
+docker compose down             i stop + remove containers/networks
+docker compose down -v          i also remove volumes
+docker compose restart web      i restart single service
+docker compose exec web bash    i shell into running service
+docker compose run web python manage.py migrate  i one-off command
+docker compose logs web -f      i follow logs for one service
+docker compose pull             i pull latest versions of all images
+\`\`\`
+
+iii Simple Nginx + static files
+\`\`\`yaml
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./static:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+\`\`\`
+
+iii Override for development vs production
+\`\`\`yaml
+i docker-compose.yml (base)
+services:
+  web:
+    build: .
+    environment:
+      - SECRET_KEY=changeme
+
+i docker-compose.override.yml (auto-loaded in dev)
+services:
+  web:
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=true
+    command: python manage.py runserver 0.0.0.0:8000
+\`\`\`
+
+---
+
+ii Volumes & Persistence
+
+\`\`\`bash
+i Named volume (Docker manages location)
+docker run -v mydata:/data myapp
+
+i Bind mount (maps host folder into container)
+docker run -v C:\\Projects\\data:/data myapp
+
+i Read-only bind mount
+docker run -v C:\\Projects\\config:/config:ro myapp
+
+i List volumes
+docker volume ls
+
+i Inspect volume
+docker volume inspect mydata
+
+i Remove volume
+docker volume rm mydata
+\`\`\`
+
+**When to use what:**
+- **Named volumes** — databases, uploads, persistent app data
+- **Bind mounts** — development (live code reload), configs
+
+---
+
+ii Networking
+
+\`\`\`bash
+i List networks
+docker network ls
+
+i Create a custom network
+docker network create mynet
+
+i Run container on custom network
+docker run -d --network mynet --name app1 myapp
+docker run -d --network mynet --name app2 myapp
+i app1 can reach app2 via http://app2:8000
+
+i Containers on the same Compose network auto-discover each other by service name
+\`\`\`
+
+In Compose, all services are on the same default network automatically. Services
+reach each other by their **service name** as the hostname:
+\`\`\`python
+i In Django settings.py — connect to "db" service in Compose
+DATABASES = {
+    "default": {
+        "HOST": "db",    i ← service name, not "localhost"
+        "PORT": "5432",
+    }
+}
+\`\`\`
+
+---
+
+ii Environment Variables & Secrets
+
+iii \`.env\` file (auto-loaded by Compose)
+\`\`\`bash
+i .env
+DEBUG=true
+SECRET_KEY=dev-only-key-change-in-production
+DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
+\`\`\`
+
+iii Reference in docker-compose.yml
+\`\`\`yaml
+services:
+  web:
+    environment:
+      - DEBUG=\${DEBUG}
+      - SECRET_KEY=\${SECRET_KEY}
+    env_file:
+      - .env          i load all vars from file
+\`\`\`
+
+> **Never commit \`.env\` to git.** Add it to \`.gitignore\`.
+
+---
+
+ii Common App Recipes
+
+iii Run a one-off Django command
+\`\`\`bash
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py createsuperuser
+docker compose exec web python manage.py shell
+\`\`\`
+
+iii Copy file to/from container
+\`\`\`bash
+docker cp mycontainer:/app/logs/error.log ./error.log    i container → host
+docker cp ./config.json mycontainer:/app/config.json     i host → container
+\`\`\`
+
+iii Quick PostgreSQL with pgAdmin
+\`\`\`yaml
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+\`\`\`
+
+iii Quick Redis + RedisInsight
+\`\`\`yaml
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  redisinsight:
+    image: redislabs/redisinsight
+    ports:
+      - "8001:8001"
+\`\`\`
+
+---
+
+ii Corporate Proxy Setup
+
+Docker needs the proxy to pull images on a corporate network.
+
+iii Docker Desktop — GUI settings
+1. Open Docker Desktop → Settings → Resources → Proxies
+2. Set HTTP and HTTPS proxy to \`http://proxy.example.com:8080\`
+3. Apply & Restart
+
+iii For builds (proxy inside Dockerfile)
+\`\`\`dockerfile
+i Pass at build time
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+RUN pip install ...
+\`\`\`
+\`\`\`bash
+docker build \\
+  --build-arg HTTP_PROXY=http://proxy.example.com:8080 \\
+  --build-arg HTTPS_PROXY=http://proxy.example.com:8080 \\
+  -t myapp .
+\`\`\`
+
+---
+
+ii Troubleshooting
+
+iii "port is already allocated"
+\`\`\`bash
+i Find what's using the port
+netstat -ano | findstr :8000
+i Kill it, or change the host port mapping in docker-compose.yml
+\`\`\`
+
+iii "Cannot connect to the Docker daemon"
+\`\`\`powershell
+i Docker Desktop not running — start it
+Start-Process "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"
+\`\`\`
+
+iii Container exits immediately
+\`\`\`bash
+docker logs <container_id>      i check what error occurred
+docker run -it myapp bash       i run interactive to debug
+\`\`\`
+
+iii Build slow — not using cache
+- Ensure \`COPY requirements.txt .\` is before \`COPY . .\`
+- Don't change frequently-changing files early in the Dockerfile
+
+iii Volume data not persisting
+- Named volumes persist across \`docker compose down\`
+- \`docker compose down -v\` **deletes volumes** — don't use \`-v\` if you want data
+
+iii "No space left on device"
+\`\`\`bash
+docker system prune -a          i remove all unused images, containers, networks
+docker volume prune             i remove unused volumes
+\`\`\`
+
+---
+
+ii Lessons Learned
+
+- **Layer order matters**: Put slow-changing steps (\`pip install\`) before
+  fast-changing ones (\`COPY . .\`) to maximize cache hits.
+- **\`depends_on\` does not wait for ready**: It only waits for the container to
+  *start*, not for Postgres to accept connections. Use \`wait-for-it.sh\` or
+  retry logic in your app.
+- **Bind mounts on Windows**: Use forward slashes in paths or Docker-style
+  paths (\`/c/Users/...\`). Windows paths with backslashes can fail.
+- **Don't run as root**: Add \`USER appuser\` in production Dockerfiles.
+- **\`.dockerignore\` is critical**: Without it, \`COPY . .\` copies \`.git\`,
+  \`node_modules\`, and all test data — making images huge.
+- **Compose network**: Services talk to each other via service name as hostname.
+  \`db:5432\` not \`localhost:5432\`.
+- **\`docker compose up --build\`**: Always use \`--build\` when testing Dockerfile
+  changes — otherwise Compose uses the cached image.
+`
+  },
+
+  // ── FFmpeg Automation ──
+  {
+    id:          'ffmpeg-automation',
+    name:        'FFmpeg Automation',
+    description: 'Batch video/audio conversion, trimming, compression, thumbnail extraction, and subtitle embedding using ffmpeg from PowerShell and Python. TRIGGER: user says "ffmpeg", "convert video", "compress video", "extract audio", "trim video", "thumbnail from video", "batch convert", "transcode", or "mp4 to mp3".',
+    category:    'Productivity',
+    tags:        ['ffmpeg', 'video', 'audio', 'conversion', 'compression', 'batch'],
+    icon:        '🎬',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: ffmpeg-automation
+description: >
+  Batch video/audio conversion, trimming, compression, thumbnail extraction,
+  and subtitle embedding using ffmpeg from PowerShell and Python. TRIGGER:
+  user says "ffmpeg", "convert video", "compress video", "extract audio",
+  "trim video", "thumbnail from video", "batch convert", "transcode", or
+  "mp4 to mp3".
+---
+
+  FFmpeg Automation — Video & Audio Processing
+
+> **Purpose**: The Swiss army knife for media processing. Convert formats,
+> compress video, extract audio, trim clips, capture thumbnails, burn
+> subtitles, and batch-process entire folders — from PowerShell or Python.
+
+---
+
+   Table of Contents
+
+1. [Quick Reference]( quick-reference)
+2. [Installation]( installation)
+3. [Core Concepts]( core-concepts)
+4. [Audio Extraction]( audio-extraction)
+5. [Video Conversion & Compression]( video-conversion--compression)
+6. [Trimming & Cutting]( trimming--cutting)
+7. [Thumbnails & Screenshots]( thumbnails--screenshots)
+8. [Subtitles]( subtitles)
+9. [Concatenation & Merging]( concatenation--merging)
+10. [Batch Processing — PowerShell]( batch-processing--powershell)
+11. [Python Wrapper (ffmpeg-python)]( python-wrapper-ffmpeg-python)
+12. [Encoding Quality Reference]( encoding-quality-reference)
+13. [Troubleshooting]( troubleshooting)
+14. [Lessons Learned]( lessons-learned)
+
+---
+
+   Quick Reference
+
+\`\`\`powershell
+  Extract audio as MP3
+ffmpeg -i input.mp4 -q:a 0 -map a output.mp3
+
+  Compress video (half file size, good quality)
+ffmpeg -i input.mp4 -crf 28 -preset fast output.mp4
+
+  Trim 30s clip starting at 1:05
+ffmpeg -i input.mp4 -ss 00:01:05 -t 30 -c copy clip.mp4
+
+  Thumbnail at 5 second mark
+ffmpeg -i input.mp4 -ss 5 -frames:v 1 thumb.jpg
+
+  Convert to GIF
+ffmpeg -i input.mp4 -vf "fps=10,scale=480:-1" -loop 0 output.gif
+
+  Get file info (no output)
+ffmpeg -i input.mp4 -hide_banner
+\`\`\`
+
+---
+
+   Installation
+
+    Windows
+\`\`\`powershell
+  Via winget (recommended)
+winget install Gyan.FFmpeg
+
+  Via chocolatey
+choco install ffmpeg
+
+  Manual: download from https://ffmpeg.org/download.html
+  Extract to C:\\ffmpeg\\ and add C:\\ffmpeg\\bin to PATH
+\`\`\`
+
+    Verify
+\`\`\`powershell
+ffmpeg -version
+ffprobe -version
+\`\`\`
+
+    corporate proxy for winget/choco
+\`\`\`powershell
+$env:HTTP_PROXY = "http://proxy.example.com:8080"
+$env:HTTPS_PROXY = "http://proxy.example.com:8080"
+winget install Gyan.FFmpeg
+\`\`\`
+
+---
+
+   Core Concepts
+
+| Flag | Meaning |
+|------|---------|
+| \`-i input.mp4\` | Input file |
+| \`-c copy\` | Copy streams without re-encoding (fast, lossless) |
+| \`-c:v libx264\` | Encode video with H.264 |
+| \`-c:a aac\` | Encode audio with AAC |
+| \`-c:a mp3\` | Encode audio as MP3 |
+| \`-crf 23\` | Quality: 0=lossless, 23=default, 51=worst |
+| \`-preset fast\` | Encoding speed: ultrafast/superfast/veryfast/faster/fast/medium/slow |
+| \`-ss 00:01:30\` | Seek to position (before \`-i\` = fast seek) |
+| \`-t 60\` | Duration in seconds |
+| \`-to 00:02:30\` | End time |
+| \`-vf "scale=1280:-1"\` | Video filter: resize width to 1280, height auto |
+| \`-af "volume=2.0"\` | Audio filter: double volume |
+| \`-y\` | Overwrite output without asking |
+| \`-hide_banner\` | Suppress version header in output |
+
+---
+
+   Audio Extraction
+
+\`\`\`powershell
+  MP3 (best variable quality)
+ffmpeg -i input.mp4 -q:a 0 -map a output.mp3
+
+  MP3 at fixed bitrate
+ffmpeg -i input.mp4 -b:a 192k output.mp3
+
+  AAC (smaller, same quality)
+ffmpeg -i input.mp4 -c:a aac -b:a 128k output.aac
+
+  WAV (uncompressed — large)
+ffmpeg -i input.mp4 -c:a pcm_s16le output.wav
+
+  FLAC (lossless compressed)
+ffmpeg -i input.mp4 -c:a flac output.flac
+
+  Extract audio from specific time range
+ffmpeg -i input.mp4 -ss 00:00:30 -t 120 -q:a 0 -map a clip_audio.mp3
+
+  Strip audio — keep video only
+ffmpeg -i input.mp4 -c:v copy -an video_only.mp4
+
+  Replace audio in video
+ffmpeg -i video.mp4 -i audio.mp3 -c:v copy -c:a aac -map 0:v -map 1:a output.mp4
+\`\`\`
+
+---
+
+   Video Conversion & Compression
+
+    Format conversion
+\`\`\`powershell
+  MP4 → MKV (no re-encode)
+ffmpeg -i input.mp4 -c copy output.mkv
+
+  AVI → MP4
+ffmpeg -i input.avi -c:v libx264 -c:a aac output.mp4
+
+  MOV → MP4 (iPhone video)
+ffmpeg -i input.mov -c:v libx264 -c:a aac -movflags +faststart output.mp4
+  Note: -movflags +faststart moves metadata to front for web streaming
+\`\`\`
+
+    Compression (reduce file size)
+\`\`\`powershell
+  Good quality, smaller file (CRF 28 ≈ 50% of original size)
+ffmpeg -i input.mp4 -crf 28 -preset fast output.mp4
+
+  Aggressive compression (CRF 35 ≈ 20% of original)
+ffmpeg -i input.mp4 -crf 35 -preset veryfast output.mp4
+
+  Target specific bitrate (2 Mbps)
+ffmpeg -i input.mp4 -b:v 2M -maxrate 2M -bufsize 4M output.mp4
+
+  Two-pass encoding (best quality at target size)
+ffmpeg -i input.mp4 -c:v libx264 -b:v 1M -pass 1 -an -f null NUL
+ffmpeg -i input.mp4 -c:v libx264 -b:v 1M -pass 2 -c:a aac output.mp4
+\`\`\`
+
+    Resize / scale
+\`\`\`powershell
+  Scale to 720p (keep aspect ratio)
+ffmpeg -i input.mp4 -vf "scale=-1:720" output_720p.mp4
+
+  Scale to 1080p wide
+ffmpeg -i input.mp4 -vf "scale=1920:-1" output_1080p.mp4
+
+  Scale to exact size (may stretch)
+ffmpeg -i input.mp4 -vf "scale=1280:720" output.mp4
+
+  Crop to 16:9 from center
+ffmpeg -i input.mp4 -vf "crop=in_w:in_w*9/16" output_cropped.mp4
+\`\`\`
+
+    Change frame rate
+\`\`\`powershell
+ffmpeg -i input.mp4 -r 30 output_30fps.mp4
+ffmpeg -i input.mp4 -r 60 output_60fps.mp4
+\`\`\`
+
+---
+
+   Trimming & Cutting
+
+\`\`\`powershell
+  Trim — fast (no re-encode, may be slightly imprecise at GOP boundary)
+ffmpeg -ss 00:01:00 -i input.mp4 -t 60 -c copy clip.mp4
+
+  Trim — precise (re-encodes, frame-accurate)
+ffmpeg -i input.mp4 -ss 00:01:00 -t 60 clip.mp4
+
+  Trim from 1:30 to 3:45 (using -to instead of -t)
+ffmpeg -i input.mp4 -ss 00:01:30 -to 00:03:45 -c copy clip.mp4
+
+  Remove first 10 seconds
+ffmpeg -ss 10 -i input.mp4 -c copy output.mp4
+
+  Keep only the last 30 seconds (need duration first)
+  Step 1: Get duration
+ffprobe -v error -show_entries format=duration -of csv=p=0 input.mp4
+  Step 2: Use (duration - 30) as -ss value
+\`\`\`
+
+---
+
+   Thumbnails & Screenshots
+
+\`\`\`powershell
+  Single thumbnail at specific time
+ffmpeg -i input.mp4 -ss 00:00:05 -frames:v 1 thumb.jpg
+
+  High quality JPEG
+ffmpeg -i input.mp4 -ss 10 -frames:v 1 -q:v 2 thumb.jpg
+
+  PNG (lossless)
+ffmpeg -i input.mp4 -ss 10 -frames:v 1 thumb.png
+
+  One thumbnail every 30 seconds
+ffmpeg -i input.mp4 -vf "fps=1/30" thumb_%04d.jpg
+
+  Grid of thumbnails (contact sheet) — requires ffmpeg with tile filter
+ffmpeg -i input.mp4 -vf "fps=1/60,scale=320:-1,tile=5x4" sheet.png
+
+  GIF from video clip
+ffmpeg -i input.mp4 -ss 5 -t 4 -vf "fps=15,scale=480:-1" -loop 0 clip.gif
+
+  Optimized GIF (smaller file, better quality)
+ffmpeg -i input.mp4 -ss 5 -t 4 -vf "fps=12,scale=480:-1,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" output.gif
+\`\`\`
+
+---
+
+   Subtitles
+
+\`\`\`powershell
+  Burn subtitles into video (hardcoded — permanent)
+ffmpeg -i input.mp4 -vf "subtitles=subs.srt" output.mp4
+
+  Add subtitle as a soft track (selectable, no re-encode of video)
+ffmpeg -i input.mp4 -i subs.srt -c copy -c:s mov_text output.mp4
+
+  Extract embedded subtitle track
+ffmpeg -i input.mp4 -map 0:s:0 subs_extracted.srt
+
+  Convert SRT to ASS format (more styling options)
+ffmpeg -i subs.srt subs.ass
+\`\`\`
+
+---
+
+   Concatenation & Merging
+
+\`\`\`powershell
+  Concatenate files (same codec, fast)
+  Create file list:
+"file 'part1.mp4'\`nfile 'part2.mp4'\`nfile 'part3.mp4'" | Out-File -Encoding ascii filelist.txt
+
+ffmpeg -f concat -safe 0 -i filelist.txt -c copy merged.mp4
+
+  Concatenate with re-encode (different formats/codecs)
+ffmpeg -i part1.mp4 -i part2.mp4 -filter_complex "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]" -map "[v]" -map "[a]" merged.mp4
+
+  Stack videos side by side
+ffmpeg -i left.mp4 -i right.mp4 -filter_complex "[0:v][1:v]hstack[v]" -map "[v]" side_by_side.mp4
+
+  Stack videos vertically
+ffmpeg -i top.mp4 -i bottom.mp4 -filter_complex "[0:v][1:v]vstack[v]" -map "[v]" stacked.mp4
+\`\`\`
+
+---
+
+   Batch Processing — PowerShell
+
+    Convert all .avi files to .mp4
+\`\`\`powershell
+Get-ChildItem "." -Filter "*.avi" | ForEach-Object {
+    $out = $_.BaseName + ".mp4"
+    Write-Host "Converting $($_.Name) -> $out"
+    ffmpeg -i $_.FullName -c:v libx264 -c:a aac -y $out
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  [OK]"
+    } else {
+        Write-Host "  [FAILED]" -ForegroundColor Red
+    }
+}
+\`\`\`
+
+    Extract thumbnail from every video in folder
+\`\`\`powershell
+$outDir = "thumbnails"
+New-Item -ItemType Directory -Force $outDir | Out-Null
+
+Get-ChildItem "." -Filter "*.mp4" | ForEach-Object {
+    $thumb = Join-Path $outDir ($_.BaseName + ".jpg")
+    ffmpeg -i $_.FullName -ss 5 -frames:v 1 -q:v 2 $thumb -y -hide_banner -loglevel error
+    Write-Host "Thumbnail: $thumb"
+}
+\`\`\`
+
+    Compress all MP4s in folder (output to subfolder)
+\`\`\`powershell
+$outDir = "compressed"
+New-Item -ItemType Directory -Force $outDir | Out-Null
+
+Get-ChildItem "." -Filter "*.mp4" | ForEach-Object {
+    $out = Join-Path $outDir $_.Name
+    $before = [math]::Round($_.Length / 1MB, 1)
+    ffmpeg -i $_.FullName -crf 28 -preset fast $out -y -hide_banner -loglevel error
+    $after = [math]::Round((Get-Item $out).Length / 1MB, 1)
+    Write-Host "$($_.Name): \${before}MB -> \${after}MB"
+}
+\`\`\`
+
+    Get info for all videos in folder
+\`\`\`powershell
+Get-ChildItem "." -Include "*.mp4","*.mkv","*.avi" -Recurse | ForEach-Object {
+    $duration = ffprobe -v error -show_entries format=duration -of csv=p=0 $_.FullName
+    $size = [math]::Round($_.Length / 1MB, 1)
+    [PSCustomObject]@{
+        Name     = $_.Name
+        Size_MB  = $size
+        Duration = [math]::Round([double]$duration, 0)
+    }
+} | Format-Table
+\`\`\`
+
+---
+
+   Python Wrapper (ffmpeg-python)
+
+\`\`\`bash
+pip install ffmpeg-python
+\`\`\`
+
+\`\`\`python
+import ffmpeg
+import subprocess
+
+  Convert
+ffmpeg.input("input.mp4").output("output.mp3", q='0', map='a').run()
+
+  Trim + compress
+(
+    ffmpeg
+    .input("input.mp4", ss="00:01:00", t=60)
+    .output("clip.mp4", crf=28, preset="fast", vcodec="libx264")
+    .overwrite_output()
+    .run()
+)
+
+  Thumbnail
+(
+    ffmpeg
+    .input("input.mp4", ss=5)
+    .output("thumb.jpg", vframes=1, **{"q:v": 2})
+    .overwrite_output()
+    .run(capture_stderr=True)
+)
+
+  Get video info
+def get_video_info(path: str) -> dict:
+    probe = ffmpeg.probe(path)
+    video_stream = next(s for s in probe["streams"] if s["codec_type"] == "video")
+    return {
+        "duration": float(probe["format"]["duration"]),
+        "width": video_stream["width"],
+        "height": video_stream["height"],
+        "fps": eval(video_stream["r_frame_rate"]),     "30/1" -> 30.0
+        "codec": video_stream["codec_name"],
+        "bitrate": int(probe["format"]["bit_rate"]) // 1000,    kbps
+    }
+
+info = get_video_info("input.mp4")
+print(f"{info['width']}x{info['height']} @ {info['fps']}fps, {info['duration']:.1f}s")
+\`\`\`
+
+---
+
+   Encoding Quality Reference
+
+    CRF (Constant Rate Factor) for H.264
+| CRF | Quality | Use Case |
+|-----|---------|----------|
+| 0 | Lossless | Archiving (huge files) |
+| 18 | Visually lossless | High-quality archive |
+| 23 | Default | General purpose |
+| 28 | Good | Web sharing, ~50% smaller |
+| 35 | Acceptable | Small files, mobile |
+| 51 | Worst | Tiny files only |
+
+    Preset speed vs file size (same CRF)
+| Preset | Encode speed | File size |
+|--------|-------------|-----------|
+| ultrafast | Very fast | Largest |
+| fast | Fast | Medium |
+| medium | Default | Default |
+| slow | Slow | Smaller |
+| veryslow | Very slow | Smallest |
+
+**Rule of thumb**: Use \`crf=28, preset=fast\` for most batch jobs.
+
+---
+
+   Troubleshooting
+
+    "Unknown encoder 'libx264'" on Windows
+\`\`\`powershell
+  Download the full build (not "essentials") from gyan.dev
+winget install Gyan.FFmpeg --version 7.0.0-full_build
+\`\`\`
+
+    Sync issues (audio/video drift after trim)
+\`\`\`powershell
+  Force re-encode instead of copy after trim
+ffmpeg -i input.mp4 -ss 00:01:00 -t 60 output.mp4    no -c copy
+\`\`\`
+
+    "Invalid data found when processing input"
+- File may be corrupted. Try: \`ffmpeg -i input.mp4 -c copy -y output.mp4\` to fix container.
+
+    Output has no audio
+\`\`\`powershell
+  Check what streams the input has
+ffprobe -v error -show_streams -select_streams a input.mp4
+  Explicitly map audio
+ffmpeg -i input.mp4 -map 0:v -map 0:a output.mp4
+\`\`\`
+
+    Slow encode on CPU — use GPU (NVIDIA)
+\`\`\`powershell
+ffmpeg -i input.mp4 -c:v h264_nvenc -crf 28 output.mp4
+  AMD:  -c:v h264_amf
+  Hardware acceleration example: -c:v h264_qsv
+\`\`\`
+
+---
+
+   Lessons Learned
+
+- **\`-ss\` before \`-i\` = fast seek** (key-frame accurate, not frame-accurate).
+  \`-ss\` after \`-i\` = slow but frame-accurate. Use fast seek for long files,
+  re-encode for precise cuts.
+- **\`-c copy\` is instant** — it just remuxes the container. Any filter or
+  resize forces a full re-encode.
+- **CRF 28 is the sweet spot** for most batch compression. Cuts file size ~50%
+  with barely noticeable quality loss.
+- **\`-movflags +faststart\`** is required for web-served MP4s — puts MOOV atom
+  at the start so the browser can start playing before the full download.
+- **Batch in PowerShell**: \`ForEach-Object\` with \`$LASTEXITCODE\` check is the
+  most reliable pattern. Don't use \`Start-Process\` — it hides errors.
+- **ffprobe** is your diagnostic tool — always check it before writing the
+  conversion command.
+- **GIF optimization**: The \`palettegen/paletteuse\` filter chain produces
+  GIFs ~3x smaller than the naive \`fps,scale\` approach.
+`
+  },
+
+  // ── LangChain RAG ──
+  {
+    id:          'langchain-rag',
+    name:        'LangChain RAG',
+    description: 'Build Retrieval-Augmented Generation (RAG) pipelines — load documents, split text, embed with Ollama or Azure OpenAI, store in a vector DB, and answer questions over your own data. TRIGGER: user says "RAG", "langchain", "retrieval augmented", "chat over my documents", "vector store", "embeddings pipeline", "PDF Q&A", or "semantic search over files".',
+    category:    'AI / ML',
+    tags:        ['rag', 'langchain', 'embeddings', 'vector', 'documents', 'llm'],
+    icon:        '🔎',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: langchain-rag
+description: >
+  Build Retrieval-Augmented Generation (RAG) pipelines — load documents,
+  split text, embed with Ollama or Azure OpenAI, store in a vector DB, and
+  answer questions over your own data. TRIGGER: user says "RAG", "langchain",
+  "retrieval augmented", "chat over my documents", "vector store", "embeddings
+  pipeline", "PDF Q&A", or "semantic search over files".
+---
+
+# LangChain RAG — Chat Over Your Own Documents
+
+> **Purpose**: Answer questions over private documents (PDFs, Word files,
+> code, logs) using local or cloud LLMs. Keeps sensitive private data off
+> external APIs when using Ollama.
+
+---
+
+## Table of Contents
+
+1. [Quick Reference](#quick-reference)
+2. [Setup](#setup)
+3. [Core RAG Pipeline](#core-rag-pipeline)
+4. [Document Loaders](#document-loaders)
+5. [Text Splitters](#text-splitters)
+6. [Embeddings — Ollama vs Azure OpenAI](#embeddings--ollama-vs-azure-openai)
+7. [Vector Stores](#vector-stores)
+8. [Retrieval & QA Chain](#retrieval--qa-chain)
+9. [Conversational RAG (Memory)](#conversational-rag-memory)
+10. [Streaming Responses](#streaming-responses)
+11. [Advanced: Custom Prompts](#advanced-custom-prompts)
+12. [Evaluating RAG Quality](#evaluating-rag-quality)
+13. [Lessons Learned](#lessons-learned)
+
+---
+
+## Quick Reference
+
+\`\`\`bash
+# Minimal install
+pip install langchain langchain-community langchain-ollama chromadb
+
+# With Azure OpenAI
+pip install langchain-openai
+
+# With PDF support
+pip install pypdf
+
+# With Word support
+pip install python-docx
+\`\`\`
+
+\`\`\`python
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_ollama import OllamaEmbeddings, ChatOllama
+from langchain_community.vectorstores import Chroma
+from langchain.chains import RetrievalQA
+
+# 1. Load → 2. Split → 3. Embed → 4. Store → 5. Retrieve → 6. Generate
+\`\`\`
+
+---
+
+## Setup
+
+\`\`\`bash
+# Minimal — local models via Ollama
+pip install langchain langchain-community langchain-ollama chromadb pypdf
+
+# With Azure OpenAI
+pip install langchain langchain-openai chromadb pypdf
+
+# Pull required Ollama models first
+ollama pull nomic-embed-text   # for embeddings (fast, small)
+ollama pull llama3.2           # for generation
+\`\`\`
+
+---
+
+## Core RAG Pipeline
+
+The complete 6-step pipeline:
+
+\`\`\`python
+from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_ollama import OllamaEmbeddings, ChatOllama
+from langchain_community.vectorstores import Chroma
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+
+# ── Step 1: Load documents ────────────────────────────────────────────────────
+loader = PyPDFLoader("my_document.pdf")
+docs = loader.load()
+print(f"Loaded {len(docs)} pages")
+
+# ── Step 2: Split into chunks ─────────────────────────────────────────────────
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200,
+    length_function=len,
+)
+chunks = splitter.split_documents(docs)
+print(f"Split into {len(chunks)} chunks")
+
+# ── Step 3+4: Embed and store in vector DB ────────────────────────────────────
+embeddings = OllamaEmbeddings(model="nomic-embed-text")
+
+vectorstore = Chroma.from_documents(
+    documents=chunks,
+    embedding=embeddings,
+    persist_directory="./chroma_db",    # saves to disk
+)
+
+# ── Step 5: Create retriever ──────────────────────────────────────────────────
+retriever = vectorstore.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 4},             # return top 4 chunks
+)
+
+# ── Step 6: QA chain ──────────────────────────────────────────────────────────
+llm = ChatOllama(model="llama3.2", temperature=0)
+
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    retriever=retriever,
+    return_source_documents=True,
+)
+
+result = qa_chain.invoke({"query": "What are the key findings?"})
+print(result["result"])
+print("\\nSources:")
+for doc in result["source_documents"]:
+    print(f"  - {doc.metadata}")
+\`\`\`
+
+---
+
+## Document Loaders
+
+### Single files
+\`\`\`python
+from langchain_community.document_loaders import (
+    PyPDFLoader,
+    Docx2txtLoader,
+    TextLoader,
+    CSVLoader,
+    UnstructuredMarkdownLoader,
+    JSONLoader,
+)
+
+# PDF (each page = one Document)
+docs = PyPDFLoader("report.pdf").load()
+
+# Word .docx
+docs = Docx2txtLoader("spec.docx").load()
+
+# Plain text
+docs = TextLoader("notes.txt", encoding="utf-8").load()
+
+# CSV (each row = one Document)
+docs = CSVLoader("data.csv", source_column="title").load()
+
+# Markdown
+docs = UnstructuredMarkdownLoader("README.md").load()
+
+# JSON with jq-style path
+docs = JSONLoader("data.json", jq_schema=".[]", text_content=False).load()
+\`\`\`
+
+### Directory of files
+\`\`\`python
+from langchain_community.document_loaders import DirectoryLoader
+
+# All PDFs in a folder
+loader = DirectoryLoader("docs/", glob="**/*.pdf", loader_cls=PyPDFLoader)
+docs = loader.load()
+
+# All .md files
+loader = DirectoryLoader("knowledge/", glob="**/*.md",
+                          loader_cls=UnstructuredMarkdownLoader)
+docs = loader.load()
+\`\`\`
+
+### Web pages
+\`\`\`python
+from langchain_community.document_loaders import WebBaseLoader
+
+loader = WebBaseLoader(["https://docs.example.com/page1",
+                         "https://docs.example.com/page2"])
+docs = loader.load()
+\`\`\`
+
+---
+
+## Text Splitters
+
+\`\`\`python
+from langchain.text_splitter import (
+    RecursiveCharacterTextSplitter,
+    CharacterTextSplitter,
+    TokenTextSplitter,
+)
+
+# Best general-purpose (tries to split on \\n\\n, \\n, " ", then chars)
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,      # target chars per chunk
+    chunk_overlap=200,    # overlap between chunks (preserve context)
+)
+
+# For code (respects function/class boundaries)
+from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
+splitter = RecursiveCharacterTextSplitter.from_language(
+    language=Language.PYTHON,
+    chunk_size=2000,
+    chunk_overlap=200,
+)
+
+# Token-aware (for LLM context window management)
+splitter = TokenTextSplitter(chunk_size=500, chunk_overlap=50)
+
+chunks = splitter.split_documents(docs)
+\`\`\`
+
+**Chunk size tuning:**
+- Factual Q&A: \`chunk_size=500, overlap=100\`
+- Technical docs / summaries: \`chunk_size=1500, overlap=300\`
+- Code: \`chunk_size=2000, overlap=200\`
+
+---
+
+## Embeddings — Ollama vs Azure OpenAI
+
+### Local (Ollama) — private, no API cost
+\`\`\`python
+from langchain_ollama import OllamaEmbeddings
+
+embeddings = OllamaEmbeddings(model="nomic-embed-text")
+# Other good options: mxbai-embed-large, all-minilm
+\`\`\`
+
+### Azure OpenAI — better quality, cloud
+\`\`\`python
+from langchain_openai import AzureOpenAIEmbeddings
+import os
+
+embeddings = AzureOpenAIEmbeddings(
+    azure_deployment="text-embedding-3-small",
+    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    api_key=os.environ["AZURE_OPENAI_API_KEY"],
+    api_version="2024-02-15-preview",
+)
+\`\`\`
+
+### Test your embeddings
+\`\`\`python
+vector = embeddings.embed_query("test sentence")
+print(f"Embedding dimension: {len(vector)}")   # nomic: 768, ada-002: 1536
+\`\`\`
+
+---
+
+## Vector Stores
+
+### Chroma (local, persistent, no server needed)
+\`\`\`python
+from langchain_community.vectorstores import Chroma
+
+# Build from documents
+db = Chroma.from_documents(
+    documents=chunks,
+    embedding=embeddings,
+    persist_directory="./chroma_db",
+)
+
+# Load existing DB (no re-embedding)
+db = Chroma(
+    persist_directory="./chroma_db",
+    embedding_function=embeddings,
+)
+\`\`\`
+
+### FAISS (in-memory, fast)
+\`\`\`python
+pip install faiss-cpu
+
+from langchain_community.vectorstores import FAISS
+
+db = FAISS.from_documents(chunks, embeddings)
+db.save_local("faiss_index")                         # save to disk
+db = FAISS.load_local("faiss_index", embeddings,     # load from disk
+                       allow_dangerous_deserialization=True)
+\`\`\`
+
+### Similarity search (direct, without chain)
+\`\`\`python
+results = db.similarity_search("What is the package spec?", k=5)
+for doc in results:
+    print(doc.page_content[:200])
+    print(doc.metadata)
+
+# With scores
+results = db.similarity_search_with_score("query", k=3)
+for doc, score in results:
+    print(f"Score: {score:.3f} | {doc.page_content[:100]}")
+\`\`\`
+
+---
+
+## Retrieval & QA Chain
+
+### Simple QA (no memory)
+\`\`\`python
+from langchain.chains import RetrievalQA
+from langchain_ollama import ChatOllama
+
+llm = ChatOllama(model="llama3.2", temperature=0)
+
+chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",              # "stuff" = put all chunks in one prompt
+    retriever=db.as_retriever(search_kwargs={"k": 4}),
+    return_source_documents=True,
+)
+
+result = chain.invoke({"query": "Summarize the design requirements"})
+print(result["result"])
+\`\`\`
+
+### MMR retriever (more diverse results)
+\`\`\`python
+retriever = db.as_retriever(
+    search_type="mmr",               # Maximum Marginal Relevance — reduces duplicates
+    search_kwargs={"k": 6, "fetch_k": 20},
+)
+\`\`\`
+
+---
+
+## Conversational RAG (Memory)
+
+\`\`\`python
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
+from langchain_ollama import ChatOllama
+
+llm = ChatOllama(model="llama3.2", temperature=0)
+
+memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True,
+    output_key="answer",
+)
+
+chain = ConversationalRetrievalChain.from_llm(
+    llm=llm,
+    retriever=db.as_retriever(search_kwargs={"k": 4}),
+    memory=memory,
+    return_source_documents=True,
+)
+
+# Multi-turn conversation
+r1 = chain.invoke({"question": "What are the main components?"})
+print(r1["answer"])
+
+r2 = chain.invoke({"question": "Which one handles the output stage?"})
+print(r2["answer"])   # knows "one" refers to main components from r1
+\`\`\`
+
+---
+
+## Streaming Responses
+
+\`\`\`python
+from langchain_ollama import ChatOllama
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain.prompts import ChatPromptTemplate
+
+llm = ChatOllama(model="llama3.2", temperature=0, streaming=True)
+
+template = """Answer based only on the following context:
+{context}
+
+Question: {question}
+Answer:"""
+
+prompt = ChatPromptTemplate.from_template(template)
+
+def format_docs(docs):
+    return "\\n\\n".join(d.page_content for d in docs)
+
+chain = (
+    {"context": db.as_retriever() | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+# Stream token by token
+for token in chain.stream("What does section 3 say about power consumption?"):
+    print(token, end="", flush=True)
+\`\`\`
+
+---
+
+## Advanced: Custom Prompts
+
+\`\`\`python
+from langchain.prompts import PromptTemplate
+from langchain.chains import RetrievalQA
+
+custom_prompt = PromptTemplate(
+    template="""You are a helpful engineering assistant.
+Use ONLY the following context to answer the question.
+If the answer is not in the context, say "I don't have that information."
+
+Context:
+{context}
+
+Question: {question}
+
+Answer (be concise and cite section numbers when available):""",
+    input_variables=["context", "question"],
+)
+
+chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    retriever=retriever,
+    chain_type_kwargs={"prompt": custom_prompt},
+)
+\`\`\`
+
+---
+
+## Evaluating RAG Quality
+
+\`\`\`python
+# Quick manual test — check retrieval is hitting the right chunks
+def test_retrieval(query: str, db, k=4):
+    docs = db.similarity_search(query, k=k)
+    print(f"\\nQuery: {query}")
+    print(f"Retrieved {len(docs)} chunks:")
+    for i, doc in enumerate(docs, 1):
+        print(f"\\n[{i}] {doc.metadata}")
+        print(doc.page_content[:300])
+
+test_retrieval("What is the maximum operating temperature?", db)
+
+# Check if answer is grounded (no hallucination)
+def check_grounding(answer: str, source_docs: list) -> bool:
+    context = " ".join(d.page_content for d in source_docs)
+    # Simple check: key phrases from answer appear in context
+    words = [w for w in answer.split() if len(w) > 5]
+    hits = sum(1 for w in words if w.lower() in context.lower())
+    return hits / len(words) > 0.3 if words else False
+\`\`\`
+
+**Signs of poor RAG quality and fixes:**
+| Problem | Likely Cause | Fix |
+|---------|-------------|-----|
+| Wrong answer | Bad retrieval | Reduce chunk size, increase k |
+| "I don't know" for info that exists | Embedding mismatch | Try different embedding model |
+| Slow | Large chunk size × many docs | Use FAISS over Chroma for large sets |
+| Duplicate content | Similar chunks retrieved | Use MMR retriever |
+
+---
+
+## Lessons Learned
+
+- **Chunk overlap is critical**: Without overlap (200-300 chars), sentences
+  at chunk boundaries are cut — causing missed answers.
+- **Re-embed when you change models**: Chroma will silently return bad results
+  if you change the embedding model without deleting and rebuilding the DB.
+- **\`temperature=0\` for factual QA**: Higher temperature leads to hallucinated
+  citations. Use 0 for retrieval-grounded answers.
+- **Ollama embeddings are slow on CPU**: \`nomic-embed-text\` on CPU takes ~1s per
+  chunk. For 500+ docs, pre-build the vector DB once and save it.
+- **Azure OpenAI embeddings are much better quality** than local models for
+  technical/domain-specific text. Use Ollama for privacy, Azure for accuracy.
+- **\`return_source_documents=True\`**: Always enable this in production so users
+  can verify answers against source material.
+- **\`stuff\` chain type fails for large contexts**: If you have >10 chunks × 1000
+  chars, switch to \`map_reduce\` or \`refine\` chain type.
+- **corporate proxy**: Set \`HTTPS_PROXY\` if using Azure OpenAI API or downloading
+  LangChain extensions on a corporate network.
+`
+  },
+
+  // ── Ollama Local LLMs ──
+  {
+    id:          'ollama-local-llms',
+    name:        'Ollama Local LLMs',
+    description: 'Run large language models locally on your machine — zero API cost, fully offline, no data leaves your computer. Pull and chat with Llama, Gemma, Mistral, DeepSeek, Qwen, Phi and 100+ other models. Build Python apps using the Ollama REST API or ollama-python SDK. TRIGGER: user says "ollama", "local LLM", "run model locally", "offline AI", "private AI", "no API cost", "llama locally", "gemma local", or "local inference".',
+    category:    'AI / ML',
+    tags:        ['ollama', 'local-llm', 'offline', 'models', 'python', 'api'],
+    icon:        '🧠',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: ollama-local-llms
+description: >
+  Run large language models locally on your machine — zero API cost, fully
+  offline, no data leaves your computer. Pull and chat with Llama, Gemma,
+  Mistral, DeepSeek, Qwen, Phi and 100+ other models. Build Python apps
+  using the Ollama REST API or ollama-python SDK. TRIGGER: user says
+  "ollama", "local LLM", "run model locally", "offline AI", "private AI",
+  "no API cost", "llama locally", "gemma local", or "local inference".
+---
+
+i Ollama — Local LLM Runner
+
+> **Purpose**: Run 100+ open-source LLMs locally. Zero API cost, fully
+> offline, private data never leaves the machine.
+
+---
+
+ii Table of Contents
+
+1. [Quick Reference](iquick-reference)
+2. [Installation](iinstallation)
+3. [Running Models](irunning-models)
+4. [Model Catalog](imodel-catalog)
+5. [REST API](irest-api)
+6. [Python SDK](ipython-sdk)
+7. [Embeddings](iembeddings)
+8. [Modelfile — Custom Models](imodelfile--custom-models)
+9. [Corporate Proxy Setup](iintel-proxy-setup)
+10. [Troubleshooting](itroubleshooting)
+11. [Lessons Learned](ilessons-learned)
+
+---
+
+ii Quick Reference
+
+\`\`\`powershell
+i Install (Windows — paste in PowerShell)
+irm https://ollama.com/install.ps1 | iex
+
+i Pull a model
+ollama pull gemma3          i 4B — fast, good quality
+ollama pull llama3.2        i Meta 3B — great for chat
+ollama pull phi4            i Microsoft 14B — strong reasoning
+ollama pull qwen2.5-coder   i Best local coding model
+ollama pull nomic-embed-text  i Embeddings
+
+i Run interactive chat
+ollama run gemma3
+ollama run phi4
+
+i List local models
+ollama list
+
+i Remove a model
+ollama rm gemma3
+
+i Check running server
+ollama ps
+\`\`\`
+
+---
+
+ii Installation
+
+iii Windows
+\`\`\`powershell
+irm https://ollama.com/install.ps1 | iex
+\`\`\`
+Or download installer: https://ollama.com/download/OllamaSetup.exe
+
+Ollama runs as a background service on \`http://localhost:11434\`.
+
+iii Verify installation
+\`\`\`powershell
+ollama --version
+curl http://localhost:11434   i should return "Ollama is running"
+\`\`\`
+
+---
+
+ii Running Models
+
+iii Interactive chat (terminal)
+\`\`\`powershell
+ollama run llama3.2
+i Type your message and press Enter
+i /bye to exit
+\`\`\`
+
+iii One-shot (no interactive shell)
+\`\`\`powershell
+ollama run gemma3 "Explain what a Docker container is in 2 sentences"
+\`\`\`
+
+iii Pass stdin
+\`\`\`powershell
+Get-Content myfile.py | ollama run qwen2.5-coder "Review this Python code for bugs"
+\`\`\`
+
+iii With system prompt
+\`\`\`powershell
+ollama run --system "You are a helpful engineering assistant." llama3.2
+\`\`\`
+
+---
+
+ii Model Catalog
+
+iii Best general-purpose models (run on most hardware)
+
+| Model | Size | Best For | Pull Command |
+|-------|------|----------|--------------|
+| \`gemma3\` | 4B | Fast chat, vision | \`ollama pull gemma3\` |
+| \`llama3.2\` | 3B | Fast chat, tools | \`ollama pull llama3.2\` |
+| \`phi4\` | 14B | Strong reasoning, math | \`ollama pull phi4\` |
+| \`mistral\` | 7B | Balanced chat | \`ollama pull mistral\` |
+| \`llama3.1\` | 8B | Best 8B model | \`ollama pull llama3.1\` |
+| \`qwen2.5\` | 7B | Multilingual, 128K ctx | \`ollama pull qwen2.5\` |
+| \`deepseek-r1\` | 8B | Reasoning / CoT | \`ollama pull deepseek-r1\` |
+
+iii Best coding models
+
+| Model | Size | Pull Command |
+|-------|------|-------------|
+| \`qwen2.5-coder\` | 7B | \`ollama pull qwen2.5-coder\` |
+| \`deepseek-coder-v2\` | 16B | \`ollama pull deepseek-coder-v2\` |
+| \`codellama\` | 7B | \`ollama pull codellama\` |
+| \`phi4\` | 14B | \`ollama pull phi4\` |
+
+iii Embedding models
+
+| Model | Size | Pull Command |
+|-------|------|-------------|
+| \`nomic-embed-text\` | 274M | \`ollama pull nomic-embed-text\` |
+| \`mxbai-embed-large\` | 335M | \`ollama pull mxbai-embed-large\` |
+| \`all-minilm\` | 22M | \`ollama pull all-minilm\` |
+
+iii Vision models (image understanding)
+
+| Model | Size | Pull Command |
+|-------|------|-------------|
+| \`llava\` | 7B | \`ollama pull llava\` |
+| \`gemma3\` | 4B | \`ollama pull gemma3\` |
+| \`llama3.2-vision\` | 11B | \`ollama pull llama3.2-vision\` |
+
+---
+
+ii REST API
+
+Ollama exposes an OpenAI-compatible REST API at \`http://localhost:11434\`.
+
+iii Chat completion (streaming)
+\`\`\`bash
+curl http://localhost:11434/api/chat -d '{
+  "model": "gemma3",
+  "messages": [{"role": "user", "content": "Why is the sky blue?"}],
+  "stream": false
+}'
+\`\`\`
+
+iii Generate (raw)
+\`\`\`bash
+curl http://localhost:11434/api/generate -d '{
+  "model": "llama3.2",
+  "prompt": "Write a haiku about silicon chips",
+  "stream": false
+}'
+\`\`\`
+
+iii List models
+\`\`\`bash
+curl http://localhost:11434/api/tags
+\`\`\`
+
+iii Pull a model via API
+\`\`\`bash
+curl http://localhost:11434/api/pull -d '{"name": "phi4"}'
+\`\`\`
+
+iii Embeddings
+\`\`\`bash
+curl http://localhost:11434/api/embed -d '{
+  "model": "nomic-embed-text",
+  "input": "The quick brown fox"
+}'
+\`\`\`
+
+iii OpenAI-compatible endpoint (drop-in replacement)
+\`\`\`python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="ollama"   i required but ignored
+)
+
+response = client.chat.completions.create(
+    model="gemma3",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+\`\`\`
+
+---
+
+ii Python SDK
+
+\`\`\`powershell
+pip install ollama
+\`\`\`
+
+iii Basic chat
+\`\`\`python
+import ollama
+
+response = ollama.chat(
+    model="gemma3",
+    messages=[{"role": "user", "content": "Explain recursion simply"}]
+)
+print(response.message.content)
+\`\`\`
+
+iii Streaming response
+\`\`\`python
+import ollama
+
+stream = ollama.chat(
+    model="llama3.2",
+    messages=[{"role": "user", "content": "Tell me a story"}],
+    stream=True
+)
+for chunk in stream:
+    print(chunk.message.content, end="", flush=True)
+\`\`\`
+
+iii With system prompt
+\`\`\`python
+import ollama
+
+response = ollama.chat(
+    model="phi4",
+    messages=[
+        {"role": "system", "content": "You are a concise Python expert."},
+        {"role": "user", "content": "What is a generator?"}
+    ]
+)
+print(response.message.content)
+\`\`\`
+
+iii Multi-turn conversation
+\`\`\`python
+import ollama
+
+messages = [{"role": "system", "content": "You are a helpful assistant."}]
+
+while True:
+    user_input = input("You: ")
+    if user_input.lower() in ("/bye", "exit", "quit"):
+        break
+
+    messages.append({"role": "user", "content": user_input})
+    response = ollama.chat(model="gemma3", messages=messages)
+    assistant_msg = response.message.content
+    messages.append({"role": "assistant", "content": assistant_msg})
+    print(f"AI: {assistant_msg}\\n")
+\`\`\`
+
+iii Generate (raw, no conversation)
+\`\`\`python
+import ollama
+
+response = ollama.generate(
+    model="llama3.2",
+    prompt="List 5 Python best practices"
+)
+print(response.response)
+\`\`\`
+
+iii Embeddings
+\`\`\`python
+import ollama
+
+result = ollama.embed(
+    model="nomic-embed-text",
+    input="The quick brown fox jumps over the lazy dog"
+)
+print(result.embeddings[0][:5])   i first 5 dimensions
+\`\`\`
+
+iii List / pull / delete models
+\`\`\`python
+import ollama
+
+i List locally available models
+models = ollama.list()
+for m in models.models:
+    print(m.model, m.size)
+
+i Pull a model
+ollama.pull("phi4")
+
+i Delete a model
+ollama.delete("phi4")
+\`\`\`
+
+---
+
+ii Embeddings
+
+Use Ollama embeddings for RAG, semantic search, and similarity.
+
+\`\`\`python
+import ollama
+import numpy as np
+
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+texts = [
+    "Python is a programming language",
+    "Django is a Python web framework",
+    "The cat sat on the mat",
+]
+
+embeddings = [
+    ollama.embed(model="nomic-embed-text", input=t).embeddings[0]
+    for t in texts
+]
+
+i Compare first two (both about Python) vs third
+print(cosine_similarity(embeddings[0], embeddings[1]))  i high ~0.9
+print(cosine_similarity(embeddings[0], embeddings[2]))  i low ~0.4
+\`\`\`
+
+---
+
+ii Modelfile — Custom Models
+
+Create a \`Modelfile\` to customize any base model:
+
+\`\`\`dockerfile
+FROM llama3.2
+
+i Set system prompt
+SYSTEM "You are an expert semiconductor engineer. Answer only about semiconductor topics."
+
+i Tune temperature (0=deterministic, 1=creative)
+PARAMETER temperature 0.3
+
+i Context window size
+PARAMETER num_ctx 8192
+
+i Stop tokens
+PARAMETER stop "<|end|>"
+\`\`\`
+
+\`\`\`powershell
+i Build and name your custom model
+ollama create semiconductor-expert -f Modelfile
+
+i Run it
+ollama run semiconductor-expert "What is the difference between 3nm and 2nm process nodes?"
+\`\`\`
+
+---
+
+ii Corporate Proxy Setup
+
+Ollama downloads models from \`ollama.com\`. On a corporate network, the proxy
+is required.
+
+iii Set proxy for model downloads (Windows)
+\`\`\`powershell
+$env:HTTPS_PROXY = "http://proxy.example.com:8080"
+$env:HTTP_PROXY  = "http://proxy.example.com:8080"
+ollama pull gemma3
+\`\`\`
+
+iii Permanent (user environment variable)
+\`\`\`powershell
+[System.Environment]::SetEnvironmentVariable("HTTPS_PROXY", "http://proxy.example.com:8080", "User")
+[System.Environment]::SetEnvironmentVariable("HTTP_PROXY",  "http://proxy.example.com:8080", "User")
+\`\`\`
+
+> **Note**: Once models are downloaded they run entirely offline. The proxy is
+> only needed for \`ollama pull\`.
+
+---
+
+ii Troubleshooting
+
+iii "connection refused" — server not running
+\`\`\`powershell
+i Start the Ollama server manually
+ollama serve
+\`\`\`
+
+iii Model download fails (proxy issue on a corporate network)
+\`\`\`powershell
+$env:HTTPS_PROXY = "http://proxy.example.com:8080"
+ollama pull gemma3
+\`\`\`
+
+iii Out of memory (model too large)
+- Use a smaller quantized variant: \`ollama pull llama3.1:8b-instruct-q4_0\`
+- Check available VRAM: \`nvidia-smi\` or use CPU-only models like \`phi4-mini\`
+
+iii Slow responses (running on CPU)
+- CPU inference is 10-30x slower than GPU
+- Use smaller models: \`phi4-mini\` (3.8B), \`llama3.2\` (3B), \`gemma3\` (1B)
+- Install CUDA drivers to enable GPU acceleration
+
+iii Check which GPU is being used
+\`\`\`powershell
+ollama ps   i shows model + hardware (CPU/GPU/VRAM used)
+\`\`\`
+
+---
+
+ii Lessons Learned
+
+- **Model sizes**: 3-8B models run fine on CPU (slow but usable). 14B+ need
+  a GPU for reasonable speed.
+- **Best small model 2026**: \`gemma3\` (4B) or \`llama3.2\` (3B) for general use;
+  \`phi4-mini\` (3.8B) for reasoning.
+- **Best coding model**: \`qwen2.5-coder:7b\` consistently outperforms \`codellama\`.
+- **Embeddings**: \`nomic-embed-text\` is the standard choice for RAG pipelines.
+- **Privacy**: Once downloaded, models run 100% offline. No data sent to any
+  server. Safe for sensitive internal data.
+- **OpenAI drop-in**: Use \`base_url="http://localhost:11434/v1"\` with the
+  \`openai\` Python package — no code changes needed.
+- **Context window**: Default is 2K tokens for most models. Set
+  \`PARAMETER num_ctx 8192\` in a Modelfile to increase it.
+- **Proxy**: Only needed for \`ollama pull\`. Not needed for inference.
+`
+  },
+
+  // ── PDF Python Automation ──
+  {
+    id:          'pdf-python-ai',
+    name:        'PDF Python Automation',
+    description: 'PDF operations using PyMuPDF library. PDF read/write automation using Python.',
+    category:    'Python',
+    tags:        ['pdf', 'pymupdf', 'python', 'automation', 'extraction', 'reportlab'],
+    icon:        '📄',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Pdf Python Ai
+description: >
+  PDF operations using PyMuPDF library. PDF read/write automation using
+  Python.
+---
+
+# Pdf Python Ai
+
+## PDF Automation — Python Guide
+
+**Source**: Drory Shohat (email, 2026-02-16)
+**Scope**: global | **Category**: tool-guide
+
+This guide covers reading and writing \`.pdf\` files using **Python**, including **AI-powered image analysis** via Azure OpenAI (o3 vision). Complements the PowerShell COM guides for Word, Excel, and PowerPoint in this workspace.
+
+---
+
+## Table of Contents
+
+- [Setup](#setup)
+- [Reading PDFs](#reading-pdfs)
+  - [Open a PDF](#open-a-pdf)
+  - [Read Full Text](#read-full-text)
+  - [Read Page by Page](#read-page-by-page)
+  - [Extract Metadata](#extract-metadata)
+  - [Extract Table of Contents (Bookmarks)](#extract-table-of-contents-bookmarks)
+  - [Extract Hyperlinks](#extract-hyperlinks)
+  - [Extract Tables](#extract-tables)
+  - [Extract Images](#extract-images)
+  - [Extract Annotations](#extract-annotations)
+  - [Search for Text](#search-for-text)
+  - [Render Pages as Images](#render-pages-as-images)
+- [AI-Powered Image Analysis](#ai-powered-image-analysis)
+  - [Azure OpenAI Setup](#azure-openai-setup)
+  - [Analyze a Single Image](#analyze-a-single-image)
+  - [Extract Text from Images (AI OCR)](#extract-text-from-images-ai-ocr)
+  - [Describe Charts & Diagrams](#describe-charts--diagrams)
+  - [Full PDF Extraction with AI Vision](#full-pdf-extraction-with-ai-vision)
+- [Writing PDFs](#writing-pdfs)
+  - [Create a Simple PDF (fpdf2)](#create-a-simple-pdf-fpdf2)
+  - [Add Text with Formatting](#add-text-with-formatting)
+  - [Add Headers & Footers](#add-headers--footers)
+  - [Add Images](#add-images)
+  - [Add Tables](#add-tables)
+  - [Add Hyperlinks](#add-hyperlinks-1)
+  - [Add Table of Contents](#add-table-of-contents)
+  - [Multi-Page Documents](#multi-page-documents)
+  - [Create a PDF with ReportLab](#create-a-pdf-with-reportlab)
+- [Modifying Existing PDFs](#modifying-existing-pdfs)
+  - [Merge PDFs](#merge-pdfs)
+  - [Split a PDF](#split-a-pdf)
+  - [Extract Specific Pages](#extract-specific-pages)
+  - [Rotate Pages](#rotate-pages)
+  - [Add Watermark / Overlay](#add-watermark--overlay)
+  - [Encrypt / Password-Protect](#encrypt--password-protect)
+  - [Redact Text](#redact-text)
+- [Practical Recipes](#practical-recipes)
+  - [PDF to Markdown with AI Vision](#pdf-to-markdown-with-ai-vision)
+  - [Batch Process PDF Folder](#batch-process-pdf-folder)
+  - [Invoice / Report Generator](#invoice--report-generator)
+- [PowerShell Integration](#powershell-integration)
+- [Library Reference](#library-reference)
+
+---
+
+## Setup
+
+### Python Environment
+
+\`\`\`powershell
+# Use the workspace venv
+$python = "python"
+
+# Proxy settings (a corporate network)
+$env:NO_PROXY = ".openai.azure.com,10.*,example.com,.example.com,10.0.0.0/8,192.168.0.0/16,localhost,.local,127.0.0.0/8,172.16.0.0/12,134.134.0.0/16,.search.windows.net"
+$env:HTTP_PROXY = "http://proxy.example.com:8080"
+$env:HTTPS_PROXY = "http://proxy.example.com:8080"
+
+# Install dependencies
+& $python -m pip install PyMuPDF openai httpx python-dotenv reportlab fpdf2 --proxy http://proxy.example.com:8080
+\`\`\`
+
+### Required Libraries
+
+| Library        | Purpose                          |
+|----------------|----------------------------------|
+| \`PyMuPDF\`      | Read/modify PDFs (text, images, metadata) |
+| \`fpdf2\`        | Create new PDFs (lightweight)    |
+| \`reportlab\`    | Create complex PDFs (advanced)   |
+| \`openai\`       | Azure OpenAI for AI image analysis |
+| \`httpx\`        | HTTP client with explicit proxy support |
+| \`python-dotenv\`| Load API keys from \`.env\`        |
+
+### .env File
+
+To use the AI-powered features (image analysis, OCR, chart description), you need an Azure OpenAI API key.
+
+**How to get your API key:**
+
+1. Go to the [your Azure subscription](https://portal.azure.com) and navigate to your Azure OpenAI resource
+2. Navigate to **Azure OpenAI** → select the \`your-azure-openai-resource\` resource
+3. Go to **Keys and Endpoint** → copy **Key 1** or **Key 2**
+4. Create a \`.env\` file in the workspace root:
+
+\`\`\`env
+API_KEY=paste_your_key_here
+\`\`\`
+
+> **Important:** Never commit \`.env\` to version control. Add it to \`.gitignore\`.
+
+---
+
+## Reading PDFs
+
+### Open a PDF
+
+\`\`\`python
+import fitz  # PyMuPDF
+
+doc = fitz.open("path/to/file.pdf")
+print(f"Pages: {doc.page_count}")
+print(f"Metadata: {doc.metadata}")
+\`\`\`
+
+Open a password-protected PDF:
+
+\`\`\`python
+doc = fitz.open("path/to/encrypted.pdf")
+doc.authenticate("password123")
+\`\`\`
+
+### Read Full Text
+
+\`\`\`python
+doc = fitz.open("path/to/file.pdf")
+full_text = ""
+for page in doc:
+    full_text += page.get_text()
+print(full_text)
+doc.close()
+\`\`\`
+
+### Read Page by Page
+
+\`\`\`python
+doc = fitz.open("path/to/file.pdf")
+
+for page_num in range(doc.page_count):
+    page = doc[page_num]
+    text = page.get_text()
+    print(f"=== Page {page_num + 1} ===")
+    print(text)
+
+# Read a specific page
+page = doc[0]  # First page (0-indexed)
+print(page.get_text())
+\`\`\`
+
+**Text extraction modes:**
+
+\`\`\`python
+page = doc[0]
+
+# Default: plain text
+text = page.get_text("text")
+
+# Preserve layout (whitespace positioning)
+text = page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+
+# As HTML
+html = page.get_text("html")
+
+# As dictionary (detailed: spans, fonts, sizes, colors)
+blocks = page.get_text("dict")
+for block in blocks["blocks"]:
+    if block["type"] == 0:  # Text block
+        for line in block["lines"]:
+            for span in line["spans"]:
+                print(f"  Font: {span['font']}, Size: {span['size']}, "
+                      f"Color: #{span['color']:06x}, Text: {span['text']}")
+
+# As JSON
+json_text = page.get_text("json")
+
+# Words with positions (word, x0, y0, x1, y1, block, line, word_num)
+words = page.get_text("words")
+for w in words:
+    print(f"  '{w[4]}' at ({w[0]:.0f}, {w[1]:.0f})")
+\`\`\`
+
+### Extract Metadata
+
+\`\`\`python
+doc = fitz.open("path/to/file.pdf")
+
+meta = doc.metadata
+print(f"Title:    {meta.get('title', 'N/A')}")
+print(f"Author:   {meta.get('author', 'N/A')}")
+print(f"Subject:  {meta.get('subject', 'N/A')}")
+print(f"Creator:  {meta.get('creator', 'N/A')}")
+print(f"Producer: {meta.get('producer', 'N/A')}")
+print(f"Created:  {meta.get('creationDate', 'N/A')}")
+print(f"Modified: {meta.get('modDate', 'N/A')}")
+print(f"Pages:    {doc.page_count}")
+print(f"Encrypted: {doc.is_encrypted}")
+\`\`\`
+
+### Extract Table of Contents (Bookmarks)
+
+\`\`\`python
+toc = doc.get_toc()  # Returns list of [level, title, page_number]
+
+for entry in toc:
+    level, title, page = entry
+    indent = "  " * (level - 1)
+    print(f"{indent}{title} (page {page})")
+\`\`\`
+
+Example output:
+\`\`\`
+Chapter 1: Introduction (page 1)
+  1.1 Background (page 3)
+  1.2 Objectives (page 5)
+Chapter 2: Methods (page 8)
+\`\`\`
+
+### Extract Hyperlinks
+
+\`\`\`python
+for page_num in range(doc.page_count):
+    page = doc[page_num]
+    links = page.get_links()
+    for link in links:
+        link_type = link.get("kind")  # 0=internal, 1=URI, 2=launch, 3=named
+        if link_type == 1:  # External URL
+            print(f"Page {page_num+1}: {link.get('uri')}")
+        elif link_type == 0:  # Internal link
+            print(f"Page {page_num+1}: -> page {link.get('page', '?') + 1}")
+\`\`\`
+
+### Extract Tables
+
+PyMuPDF can detect tables:
+
+\`\`\`python
+page = doc[0]
+tables = page.find_tables()
+
+for i, table in enumerate(tables):
+    print(f"=== Table {i+1} ({table.row_count} rows x {table.col_count} cols) ===")
+    data = table.extract()
+    for row in data:
+        print(" | ".join(str(cell) if cell else "" for cell in row))
+\`\`\`
+
+### Extract Images
+
+\`\`\`python
+doc = fitz.open("path/to/file.pdf")
+
+for page_num in range(doc.page_count):
+    page = doc[page_num]
+    images = page.get_images(full=True)
+
+    for img_idx, img in enumerate(images):
+        xref = img[0]
+        base_image = doc.extract_image(xref)
+        image_bytes = base_image["image"]
+        image_ext = base_image["ext"]       # e.g. "png", "jpeg"
+        image_width = base_image["width"]
+        image_height = base_image["height"]
+
+        # Save to file
+        output_path = f"page{page_num+1}_img{img_idx+1}.{image_ext}"
+        with open(output_path, "wb") as f:
+            f.write(image_bytes)
+        print(f"Saved: {output_path} ({image_width}x{image_height})")
+\`\`\`
+
+### Extract Annotations
+
+\`\`\`python
+for page in doc:
+    annots = page.annots()
+    if annots:
+        for annot in annots:
+            print(f"  Type: {annot.type}, Content: {annot.info.get('content', '')}")
+\`\`\`
+
+### Search for Text
+
+\`\`\`python
+page = doc[0]
+
+# Search returns list of Rect objects (bounding boxes)
+results = page.search_for("keyword")
+print(f"Found {len(results)} matches on page 1")
+
+for rect in results:
+    print(f"  At position: ({rect.x0:.0f}, {rect.y0:.0f}) to ({rect.x1:.0f}, {rect.y1:.0f})")
+
+# Highlight search results
+for rect in results:
+    highlight = page.add_highlight_annot(rect)
+    highlight.update()
+
+# Save with highlights
+doc.save("highlighted_output.pdf")
+\`\`\`
+
+### Render Pages as Images
+
+\`\`\`python
+page = doc[0]
+
+# Render at default resolution (72 DPI)
+pix = page.get_pixmap()
+pix.save("page1.png")
+
+# Render at higher resolution (300 DPI for print quality)
+zoom = 300 / 72  # 4.17x zoom
+mat = fitz.Matrix(zoom, zoom)
+pix = page.get_pixmap(matrix=mat)
+pix.save("page1_hires.png")
+
+# Render all pages
+for page_num in range(doc.page_count):
+    page = doc[page_num]
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 144 DPI
+    pix.save(f"page_{page_num+1}.png")
+\`\`\`
+
+---
+
+## AI-Powered Image Analysis
+
+Use Azure OpenAI's o3 model with vision capabilities to understand images extracted from PDFs — including diagrams, charts, handwritten text, screenshots, and more.
+
+### Azure OpenAI Setup
+
+> **Note:** On the a corporate network, the \`openai\` SDK may route requests through the HTTP proxy, which can cause connection timeouts to Azure OpenAI. The fix is to create an explicit \`httpx.Client\` with \`proxy\` set to the corporate proxy. The \`NO_PROXY\` env var alone is not reliably honoured by httpx.
+
+\`\`\`python
+import os
+import base64
+import httpx
+from openai import AzureOpenAI
+from dotenv import load_dotenv
+
+load_dotenv()  # Loads API_KEY from .env file
+
+# Explicit proxy for a corporate network — avoids connection timeouts
+http_client = httpx.Client(
+    timeout=httpx.Timeout(300.0, connect=60.0),
+    proxy="http://proxy.example.com:8080",
+)
+
+client = AzureOpenAI(
+    azure_endpoint="https://your-azure-openai-resource.openai.azure.com/",
+    api_key=os.getenv("API_KEY"),
+    api_version="2025-01-01-preview",
+    http_client=http_client,
+)
+DEPLOYMENT = "o3"
+\`\`\`
+
+> **o3 parameter note:** The o3 model requires \`max_completion_tokens\` instead of \`max_tokens\`. Using \`max_tokens\` will return a 400 error.
+
+### Analyze a Single Image
+
+\`\`\`python
+def analyze_image(image_path: str, prompt: str = "Describe this image in detail.") -> str:
+    """Send an image to Azure OpenAI o3 for analysis."""
+    with open(image_path, "rb") as f:
+        image_data = base64.b64encode(f.read()).decode("utf-8")
+
+    # Detect MIME type
+    ext = image_path.rsplit(".", 1)[-1].lower()
+    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+            "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp"}.get(ext, "image/png")
+
+    response = client.chat.completions.create(
+        model=DEPLOYMENT,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:{mime};base64,{image_data}"
+                    }}
+                ]
+            }
+        ],
+        max_completion_tokens=4096,
+    )
+    return response.choices[0].message.content
+\`\`\`
+
+### Analyze from Bytes (No File Save Needed)
+
+\`\`\`python
+def analyze_image_bytes(image_bytes: bytes, ext: str = "png",
+                        prompt: str = "Describe this image in detail.") -> str:
+    """Analyze image bytes directly without saving to disk."""
+    image_data = base64.b64encode(image_bytes).decode("utf-8")
+    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, "image/png")
+
+    response = client.chat.completions.create(
+        model=DEPLOYMENT,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:{mime};base64,{image_data}"
+                    }}
+                ]
+            }
+        ],
+        max_completion_tokens=4096,
+    )
+    return response.choices[0].message.content
+\`\`\`
+
+### Extract Text from Images (AI OCR)
+
+\`\`\`python
+def ocr_image(image_path: str) -> str:
+    """Extract all text from an image using AI vision."""
+    return analyze_image(image_path,
+        prompt="Extract ALL text from this image. Return only the text content, "
+               "preserving the original layout and formatting as closely as possible. "
+               "If there are tables, format them as markdown tables."
+    )
+\`\`\`
+
+### Describe Charts & Diagrams
+
+\`\`\`python
+def describe_chart(image_path: str) -> str:
+    """Get a detailed description of a chart or diagram."""
+    return analyze_image(image_path,
+        prompt="Analyze this chart/diagram in detail. Include:\\n"
+               "1. Type of chart (bar, line, pie, flowchart, etc.)\\n"
+               "2. Title and axis labels\\n"
+               "3. All data points and values visible\\n"
+               "4. Key trends or insights\\n"
+               "5. Any legends or annotations\\n"
+               "Return a structured description with the data."
+    )
+\`\`\`
+
+### Full PDF Extraction with AI Vision
+
+This is the main recipe — extract everything from a PDF, including AI analysis of all images:
+
+\`\`\`python
+import fitz
+import base64
+import os
+import httpx
+from openai import AzureOpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Explicit proxy for a corporate network
+http_client = httpx.Client(
+    timeout=httpx.Timeout(300.0, connect=60.0),
+    proxy="http://proxy.example.com:8080",
+)
+
+client = AzureOpenAI(
+    azure_endpoint="https://your-azure-openai-resource.openai.azure.com/",
+    api_key=os.getenv("API_KEY"),
+    api_version="2025-01-01-preview",
+    http_client=http_client,
+)
+DEPLOYMENT = "o3"
+
+
+def analyze_image_bytes(image_bytes, ext="png", prompt="Describe this image in detail."):
+    image_data = base64.b64encode(image_bytes).decode("utf-8")
+    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, "image/png")
+    response = client.chat.completions.create(
+        model=DEPLOYMENT,
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_data}"}}
+        ]}],
+        max_completion_tokens=4096,
+    )
+    return response.choices[0].message.content
+
+
+def extract_pdf_full(pdf_path, analyze_images=True):
+    """
+    Extract all content from a PDF including AI-analyzed images.
+
+    Returns a list of dicts, one per page:
+    {
+        "page": int,
+        "text": str,
+        "tables": list[list[list[str]]],
+        "images": list[{"bytes": bytes, "ext": str, "description": str}],
+        "links": list[dict],
+    }
+    """
+    doc = fitz.open(pdf_path)
+    results = []
+
+    for page_num in range(doc.page_count):
+        page = doc[page_num]
+        page_data = {
+            "page": page_num + 1,
+            "text": page.get_text("text"),
+            "tables": [],
+            "images": [],
+            "links": [],
+        }
+
+        # Extract tables
+        for table in page.find_tables():
+            page_data["tables"].append(table.extract())
+
+        # Extract and analyze images
+        for img_idx, img in enumerate(page.get_images(full=True)):
+            xref = img[0]
+            base_image = doc.extract_image(xref)
+            img_info = {
+                "index": img_idx + 1,
+                "ext": base_image["ext"],
+                "width": base_image["width"],
+                "height": base_image["height"],
+                "size_kb": len(base_image["image"]) / 1024,
+            }
+
+            if analyze_images:
+                print(f"  Analyzing image {img_idx+1} on page {page_num+1}...")
+                try:
+                    description = analyze_image_bytes(
+                        base_image["image"],
+                        base_image["ext"],
+                        prompt="Analyze this image from a PDF document. "
+                               "Extract any text, describe any charts/diagrams, "
+                               "and summarize the visual content. "
+                               "If it contains a table, format it as markdown."
+                    )
+                    img_info["description"] = description
+                except Exception as e:
+                    img_info["description"] = f"[Analysis failed: {e}]"
+            else:
+                img_info["description"] = "[Skipped]"
+
+            page_data["images"].append(img_info)
+
+        # Extract links
+        for link in page.get_links():
+            if link.get("kind") == 1:
+                page_data["links"].append({"type": "url", "uri": link.get("uri")})
+            elif link.get("kind") == 0:
+                page_data["links"].append({"type": "internal", "target_page": link.get("page", 0) + 1})
+
+        results.append(page_data)
+        print(f"Page {page_num+1}/{doc.page_count} processed.")
+
+    doc.close()
+    return results
+
+
+# === Usage ===
+if __name__ == "__main__":
+    pages = extract_pdf_full("path/to/document.pdf", analyze_images=True)
+
+    for p in pages:
+        print(f"\\n{'='*60}")
+        print(f"PAGE {p['page']}")
+        print(f"{'='*60}")
+        print(p["text"][:500])
+
+        if p["tables"]:
+            print(f"\\n  Tables: {len(p['tables'])}")
+            for t in p["tables"]:
+                for row in t:
+                    print("  " + " | ".join(str(c) for c in row))
+
+        if p["images"]:
+            print(f"\\n  Images: {len(p['images'])}")
+            for img in p["images"]:
+                print(f"  - Image {img['index']} ({img['width']}x{img['height']}, "
+                      f"{img['size_kb']:.1f} KB)")
+                print(f"    AI Description: {img['description'][:200]}...")
+
+        if p["links"]:
+            print(f"\\n  Links: {len(p['links'])}")
+            for link in p["links"]:
+                print(f"  - {link}")
+\`\`\`
+
+### Analyze Full Pages as Screenshots
+
+For PDFs with complex layouts where text extraction misses visual context:
+
+\`\`\`python
+def extract_pdf_as_screenshots(pdf_path, dpi=200):
+    """
+    Render each page as an image and send to AI for full-page analysis.
+    Best for: scanned documents, complex layouts, mixed text+graphics.
+    """
+    doc = fitz.open(pdf_path)
+    results = []
+
+    zoom = dpi / 72
+    mat = fitz.Matrix(zoom, zoom)
+
+    for page_num in range(doc.page_count):
+        page = doc[page_num]
+        pix = page.get_pixmap(matrix=mat)
+        img_bytes = pix.tobytes("png")
+
+        print(f"Analyzing page {page_num+1}/{doc.page_count} as screenshot...")
+        description = analyze_image_bytes(
+            img_bytes, "png",
+            prompt="This is a screenshot of a PDF page. Extract ALL content:\\n"
+                   "1. All text, preserving headings and structure\\n"
+                   "2. Describe any images, charts, or diagrams\\n"
+                   "3. Extract any tables as markdown tables\\n"
+                   "4. Note any special formatting (bold, italic, colors)\\n"
+                   "Return the content as clean markdown."
+        )
+        results.append({
+            "page": page_num + 1,
+            "content": description
+        })
+
+    doc.close()
+    return results
+\`\`\`
+
+---
+
+## Writing PDFs
+
+### Create a Simple PDF (fpdf2)
+
+\`\`\`python
+from fpdf import FPDF
+
+pdf = FPDF()
+pdf.add_page()
+pdf.set_font("Helvetica", size=16)
+pdf.cell(text="Hello, World!", center=True, new_x="LMARGIN", new_y="NEXT")
+
+pdf.set_font("Helvetica", size=12)
+pdf.cell(text="This is a simple PDF created with Python.", new_x="LMARGIN", new_y="NEXT")
+
+pdf.output("output.pdf")
+\`\`\`
+
+### Add Text with Formatting
+
+\`\`\`python
+from fpdf import FPDF
+
+pdf = FPDF()
+pdf.add_page()
+
+# Title
+pdf.set_font("Helvetica", "B", 24)
+pdf.cell(text="Document Title", center=True, new_x="LMARGIN", new_y="NEXT")
+pdf.ln(10)
+
+# Subtitle
+pdf.set_font("Helvetica", "I", 14)
+pdf.set_text_color(100, 100, 100)  # Gray
+pdf.cell(text="A subtitle with gray italic text", center=True, new_x="LMARGIN", new_y="NEXT")
+pdf.ln(15)
+
+# Body text
+pdf.set_font("Helvetica", "", 11)
+pdf.set_text_color(0, 0, 0)  # Black
+pdf.multi_cell(w=0, text=(
+    "This is body text that wraps automatically. It supports "
+    "multiple paragraphs and line breaks. You can set fonts, "
+    "sizes, colors, and alignment."
+))
+pdf.ln(5)
+
+# Bold text inline (using write)
+pdf.set_font("Helvetica", "B", 11)
+pdf.write(text="Bold text ")
+pdf.set_font("Helvetica", "", 11)
+pdf.write(text="followed by normal text.")
+pdf.ln(10)
+
+# Colored text
+pdf.set_text_color(0, 113, 197)  # Brand Blue
+pdf.set_font("Helvetica", "B", 12)
+pdf.cell(text="Brand Blue colored text", new_x="LMARGIN", new_y="NEXT")
+pdf.set_text_color(0, 0, 0)
+
+# Right-aligned text
+pdf.cell(w=0, text="Right aligned", align="R", new_x="LMARGIN", new_y="NEXT")
+
+pdf.output("formatted.pdf")
+\`\`\`
+
+### Add Headers & Footers
+
+\`\`\`python
+from fpdf import FPDF
+
+class PDFWithHeaderFooter(FPDF):
+    def header(self):
+        self.set_font("Helvetica", "I", 9)
+        self.set_text_color(128, 128, 128)
+        self.cell(w=0, text="CONFIDENTIAL — Example Corp", align="C",
+                  new_x="LMARGIN", new_y="NEXT")
+        self.line(10, 15, self.w - 10, 15)  # Horizontal line
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Helvetica", "I", 8)
+        self.set_text_color(128, 128, 128)
+        self.cell(w=0, text=f"Page {self.page_no()}/{{nb}}", align="C")
+
+pdf = PDFWithHeaderFooter()
+pdf.alias_nb_pages()
+pdf.add_page()
+pdf.set_font("Helvetica", size=12)
+pdf.cell(text="Content goes here", new_x="LMARGIN", new_y="NEXT")
+pdf.output("with_header_footer.pdf")
+\`\`\`
+
+### Add Images
+
+\`\`\`python
+pdf = FPDF()
+pdf.add_page()
+
+# Add image with automatic sizing
+pdf.image("path/to/image.png", x=10, y=30, w=100)
+
+# Add image centered
+page_width = pdf.w - 2 * pdf.l_margin
+pdf.image("path/to/image.png", x=(pdf.w - 120) / 2, w=120)
+
+# Add image with specific dimensions
+pdf.image("path/to/image.png", x=10, y=100, w=80, h=60)
+
+# Add image from URL
+pdf.image("https://example.com/image.png", x=10, w=100)
+
+pdf.output("with_images.pdf")
+\`\`\`
+
+### Add Tables
+
+\`\`\`python
+from fpdf import FPDF
+
+pdf = FPDF()
+pdf.add_page()
+pdf.set_font("Helvetica", size=10)
+
+# Table data
+headers = ["Name", "Department", "Score", "Status"]
+data = [
+    ["Alice", "Engineering", "95", "Pass"],
+    ["Bob", "Design", "88", "Pass"],
+    ["Charlie", "Marketing", "72", "Review"],
+    ["Diana", "Engineering", "97", "Pass"],
+]
+
+col_widths = [45, 45, 30, 30]
+
+# Header row
+pdf.set_fill_color(0, 113, 197)   # Brand Blue
+pdf.set_text_color(255, 255, 255)  # White
+pdf.set_font("Helvetica", "B", 10)
+for i, header in enumerate(headers):
+    pdf.cell(w=col_widths[i], h=10, text=header, border=1,
+             align="C", fill=True, new_x="RIGHT", new_y="TOP")
+pdf.ln()
+
+# Data rows
+pdf.set_text_color(0, 0, 0)
+pdf.set_font("Helvetica", "", 10)
+for row_idx, row in enumerate(data):
+    # Alternating row colors
+    if row_idx % 2 == 0:
+        pdf.set_fill_color(240, 240, 240)
+    else:
+        pdf.set_fill_color(255, 255, 255)
+
+    for i, cell in enumerate(row):
+        pdf.cell(w=col_widths[i], h=8, text=cell, border=1,
+                 align="C", fill=True, new_x="RIGHT", new_y="TOP")
+    pdf.ln()
+
+pdf.output("with_table.pdf")
+\`\`\`
+
+### Add Hyperlinks
+
+\`\`\`python
+pdf = FPDF()
+pdf.add_page()
+pdf.set_font("Helvetica", size=12)
+
+# External URL link
+pdf.set_text_color(0, 0, 255)
+pdf.cell(w=0, text="Visit Example.com", link="https://www.example.com",
+         new_x="LMARGIN", new_y="NEXT")
+
+# Internal link (to another page)
+pdf.add_page()
+pdf.set_font("Helvetica", "B", 16)
+link_target = pdf.add_link(page=1)
+pdf.cell(w=0, text="Go back to page 1", link=link_target,
+         new_x="LMARGIN", new_y="NEXT")
+
+pdf.output("with_links.pdf")
+\`\`\`
+
+### Add Table of Contents
+
+\`\`\`python
+from fpdf import FPDF
+
+class PDFWithTOC(FPDF):
+    def __init__(self):
+        super().__init__()
+        self.toc_entries = []
+
+    def add_heading(self, text, level=1):
+        sizes = {1: 20, 2: 16, 3: 13}
+        fonts = {1: "B", 2: "B", 3: "BI"}
+
+        # Record TOC entry
+        self.toc_entries.append({
+            "title": text,
+            "level": level,
+            "page": self.page_no()
+        })
+
+        self.set_font("Helvetica", fonts.get(level, ""), sizes.get(level, 12))
+        self.cell(text=text, new_x="LMARGIN", new_y="NEXT")
+        self.ln(5)
+
+    def insert_toc(self):
+        self.add_page()
+        self.set_font("Helvetica", "B", 20)
+        self.cell(text="Table of Contents", center=True, new_x="LMARGIN", new_y="NEXT")
+        self.ln(10)
+
+        self.set_font("Helvetica", "", 11)
+        for entry in self.toc_entries:
+            indent = "    " * (entry["level"] - 1)
+            self.cell(
+                w=0,
+                text=f"{indent}{entry['title']}",
+                new_x="LMARGIN", new_y="NEXT"
+            )
+        self.ln(5)
+
+
+pdf = PDFWithTOC()
+
+# Build content
+pdf.add_page()
+pdf.add_heading("Chapter 1: Introduction", level=1)
+pdf.set_font("Helvetica", "", 11)
+pdf.multi_cell(w=0, text="Content of chapter 1...")
+pdf.ln(5)
+
+pdf.add_heading("1.1 Background", level=2)
+pdf.multi_cell(w=0, text="Background content...")
+
+pdf.add_page()
+pdf.add_heading("Chapter 2: Methods", level=1)
+pdf.multi_cell(w=0, text="Methods content...")
+
+# Insert TOC at the beginning (after generating content)
+# Note: fpdf2 doesn't support inserting pages, so build TOC first
+# or use reportlab for more control
+
+pdf.output("with_toc.pdf")
+\`\`\`
+
+### Multi-Page Documents
+
+\`\`\`python
+pdf = FPDF()
+pdf.set_auto_page_break(auto=True, margin=15)
+
+# Long text that auto-paginates
+pdf.add_page()
+pdf.set_font("Helvetica", size=11)
+
+long_text = "Lorem ipsum... " * 500  # Very long text
+pdf.multi_cell(w=0, text=long_text)
+
+# Manual page breaks
+pdf.add_page()
+pdf.set_font("Helvetica", "B", 16)
+pdf.cell(text="New Section on New Page", new_x="LMARGIN", new_y="NEXT")
+
+# Landscape page
+pdf.add_page(orientation="L")
+pdf.cell(text="Landscape page", new_x="LMARGIN", new_y="NEXT")
+
+pdf.output("multipage.pdf")
+\`\`\`
+
+### Create a PDF with ReportLab
+
+For more complex PDFs with precise positioning:
+
+\`\`\`python
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import inch, cm
+from reportlab.lib.colors import HexColor, black, blue, white
+
+# Basic document
+c = canvas.Canvas("reportlab_output.pdf", pagesize=A4)
+width, height = A4
+
+# Title
+c.setFont("Helvetica-Bold", 24)
+c.drawCentredString(width / 2, height - 50, "Report Title")
+
+# Body text
+c.setFont("Helvetica", 12)
+c.drawString(72, height - 100, "This is body text at exact coordinates.")
+
+# Colored text
+c.setFillColor(HexColor("#0071C5"))  # Brand Blue
+c.drawString(72, height - 130, "Brand Blue colored text")
+c.setFillColor(black)
+
+# Shapes
+c.setStrokeColor(blue)
+c.setFillColor(HexColor("#E8F0FE"))
+c.rect(72, height - 250, 200, 80, fill=True)
+
+# Image
+c.drawImage("path/to/image.png", 72, 100, width=200, height=150)
+
+# Line
+c.setStrokeColor(black)
+c.line(72, height - 80, width - 72, height - 80)
+
+# Save
+c.showPage()
+c.save()
+\`\`\`
+
+**ReportLab with Platypus (high-level API for flowing documents):**
+
+\`\`\`python
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.colors import HexColor, black, white
+
+doc = SimpleDocTemplate("platypus_output.pdf", pagesize=A4)
+styles = getSampleStyleSheet()
+
+# Custom style
+styles.add(ParagraphStyle(
+    name="IntelBlue",
+    parent=styles["Heading1"],
+    textColor=HexColor("#0071C5"),
+))
+
+story = []
+
+# Title
+story.append(Paragraph("Report Title", styles["Title"]))
+story.append(Spacer(1, 12))
+
+# Paragraphs
+story.append(Paragraph("This is a paragraph with <b>bold</b> and <i>italic</i> text.", styles["Normal"]))
+story.append(Spacer(1, 12))
+
+# Table
+data = [
+    ["Name", "Score", "Status"],
+    ["Alice", "95", "Pass"],
+    ["Bob", "88", "Pass"],
+]
+table = Table(data, colWidths=[150, 80, 80])
+table.setStyle(TableStyle([
+    ("BACKGROUND", (0, 0), (-1, 0), HexColor("#0071C5")),
+    ("TEXTCOLOR", (0, 0), (-1, 0), white),
+    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+    ("GRID", (0, 0), (-1, -1), 1, black),
+    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [white, HexColor("#F0F0F0")]),
+]))
+story.append(table)
+
+doc.build(story)
+\`\`\`
+
+---
+
+## Modifying Existing PDFs
+
+### Merge PDFs
+
+\`\`\`python
+import fitz
+
+output = fitz.open()
+
+files = ["file1.pdf", "file2.pdf", "file3.pdf"]
+for f in files:
+    doc = fitz.open(f)
+    output.insert_pdf(doc)
+    doc.close()
+
+output.save("merged.pdf")
+output.close()
+\`\`\`
+
+### Split a PDF
+
+\`\`\`python
+doc = fitz.open("large_document.pdf")
+
+# Split into individual pages
+for page_num in range(doc.page_count):
+    single = fitz.open()
+    single.insert_pdf(doc, from_page=page_num, to_page=page_num)
+    single.save(f"page_{page_num + 1}.pdf")
+    single.close()
+
+doc.close()
+\`\`\`
+
+### Extract Specific Pages
+
+\`\`\`python
+doc = fitz.open("source.pdf")
+output = fitz.open()
+
+# Extract pages 3, 5, 7 (0-indexed: 2, 4, 6)
+for page_num in [2, 4, 6]:
+    output.insert_pdf(doc, from_page=page_num, to_page=page_num)
+
+# Or extract a range (pages 5-10)
+output.insert_pdf(doc, from_page=4, to_page=9)
+
+output.save("extracted.pdf")
+\`\`\`
+
+### Rotate Pages
+
+\`\`\`python
+doc = fitz.open("source.pdf")
+
+# Rotate page 1 by 90 degrees clockwise
+doc[0].set_rotation(90)
+
+# Rotate all pages
+for page in doc:
+    page.set_rotation(180)  # 0, 90, 180, 270
+
+doc.save("rotated.pdf")
+\`\`\`
+
+### Add Watermark / Overlay
+
+\`\`\`python
+import fitz
+
+doc = fitz.open("source.pdf")
+
+for page in doc:
+    # Text watermark
+    rect = page.rect
+    text = "CONFIDENTIAL"
+
+    # Create a text writer for the watermark
+    tw = fitz.TextWriter(page.rect)
+    font = fitz.Font("helv")
+    fontsize = 60
+
+    # Calculate center position
+    text_width = font.text_length(text, fontsize=fontsize)
+    x = (rect.width - text_width) / 2
+    y = rect.height / 2
+
+    # Insert semi-transparent watermark
+    page.insert_text(
+        (x, y),
+        text,
+        fontsize=fontsize,
+        fontname="helv",
+        color=(0.8, 0.8, 0.8),  # Light gray
+        rotate=45,
+    )
+
+doc.save("watermarked.pdf")
+\`\`\`
+
+### Encrypt / Password-Protect
+
+\`\`\`python
+doc = fitz.open("source.pdf")
+
+# Encrypt with password
+doc.save(
+    "encrypted.pdf",
+    encryption=fitz.PDF_ENCRYPT_AES_256,
+    owner_pw="owner_password",   # Full access password
+    user_pw="user_password",      # View-only password
+    permissions=(
+        fitz.PDF_PERM_PRINT |      # Allow printing
+        fitz.PDF_PERM_COPY         # Allow copy
+        # Omit to deny: fitz.PDF_PERM_MODIFY, fitz.PDF_PERM_ANNOTATE
+    ),
+)
+\`\`\`
+
+### Redact Text
+
+\`\`\`python
+doc = fitz.open("source.pdf")
+page = doc[0]
+
+# Find and redact text
+results = page.search_for("CONFIDENTIAL DATA")
+for rect in results:
+    page.add_redact_annot(rect, fill=(0, 0, 0))  # Black fill
+
+# Apply all redactions (permanently removes content)
+page.apply_redactions()
+
+doc.save("redacted.pdf")
+\`\`\`
+
+---
+
+## Practical Recipes
+
+### PDF to Markdown with AI Vision
+
+Convert an entire PDF to clean markdown, using AI to understand images:
+
+\`\`\`python
+import fitz
+import base64
+import os
+import httpx
+from openai import AzureOpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Explicit proxy for a corporate network
+http_client = httpx.Client(
+    timeout=httpx.Timeout(300.0, connect=60.0),
+    proxy="http://proxy.example.com:8080",
+)
+
+client = AzureOpenAI(
+    azure_endpoint="https://your-azure-openai-resource.openai.azure.com/",
+    api_key=os.getenv("API_KEY"),
+    api_version="2025-01-01-preview",
+    http_client=http_client,
+)
+DEPLOYMENT = "o3"
+
+
+def pdf_to_markdown(pdf_path, output_md_path, use_ai_for_images=True, dpi=200):
+    """Convert a PDF to a markdown file, with AI image descriptions."""
+    doc = fitz.open(pdf_path)
+    md_lines = [f"# {doc.metadata.get('title', os.path.basename(pdf_path))}\\n"]
+
+    # Add TOC if available
+    toc = doc.get_toc()
+    if toc:
+        md_lines.append("## Table of Contents\\n")
+        for level, title, page in toc:
+            indent = "  " * (level - 1)
+            md_lines.append(f"{indent}- {title} (p.{page})")
+        md_lines.append("\\n---\\n")
+
+    zoom = dpi / 72
+    mat = fitz.Matrix(zoom, zoom)
+
+    for page_num in range(doc.page_count):
+        page = doc[page_num]
+        md_lines.append(f"\\n---\\n\\n## Page {page_num + 1}\\n")
+
+        # Extract text
+        text = page.get_text("text").strip()
+        if text:
+            md_lines.append(text)
+
+        # Extract tables
+        for table in page.find_tables():
+            data = table.extract()
+            if data:
+                md_lines.append("\\n")
+                # Header row
+                headers = [str(c) if c else "" for c in data[0]]
+                md_lines.append("| " + " | ".join(headers) + " |")
+                md_lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+                for row in data[1:]:
+                    cells = [str(c) if c else "" for c in row]
+                    md_lines.append("| " + " | ".join(cells) + " |")
+                md_lines.append("")
+
+        # Extract and describe images
+        images = page.get_images(full=True)
+        if images and use_ai_for_images:
+            for img_idx, img in enumerate(images):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                img_bytes = base_image["image"]
+                ext = base_image["ext"]
+
+                # Skip tiny images (likely icons/bullets)
+                if base_image["width"] < 50 or base_image["height"] < 50:
+                    continue
+
+                print(f"  Analyzing image {img_idx+1} on page {page_num+1}...")
+                try:
+                    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                    mime = {"png": "image/png", "jpeg": "image/jpeg",
+                            "jpg": "image/jpeg"}.get(ext, "image/png")
+                    response = client.chat.completions.create(
+                        model=DEPLOYMENT,
+                        messages=[{"role": "user", "content": [
+                            {"type": "text", "text":
+                             "Describe this image from a PDF. If it contains text, "
+                             "extract it. If it's a chart/diagram, describe the data "
+                             "and insights. Be concise but thorough."},
+                            {"type": "image_url", "image_url": {
+                                "url": f"data:{mime};base64,{img_b64}"}}
+                        ]}],
+                        max_completion_tokens=2048,
+                    )
+                    desc = response.choices[0].message.content
+                    md_lines.append(f"\\n> **[Image {img_idx+1}]:** {desc}\\n")
+                except Exception as e:
+                    md_lines.append(f"\\n> **[Image {img_idx+1}]:** *(Analysis failed: {e})*\\n")
+
+    doc.close()
+
+    # Write markdown file
+    with open(output_md_path, "w", encoding="utf-8") as f:
+        f.write("\\n".join(md_lines))
+
+    print(f"Saved: {output_md_path}")
+    return output_md_path
+
+
+# === Usage ===
+pdf_to_markdown("input.pdf", "output.md", use_ai_for_images=True)
+\`\`\`
+
+### Batch Process PDF Folder
+
+\`\`\`python
+import os
+import fitz
+
+def batch_extract_text(folder_path, output_folder):
+    """Extract text from all PDFs in a folder."""
+    os.makedirs(output_folder, exist_ok=True)
+
+    for filename in os.listdir(folder_path):
+        if filename.lower().endswith(".pdf"):
+            pdf_path = os.path.join(folder_path, filename)
+            txt_path = os.path.join(output_folder, filename.replace(".pdf", ".txt"))
+
+            doc = fitz.open(pdf_path)
+            text = ""
+            for page in doc:
+                text += page.get_text()
+            doc.close()
+
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(text)
+
+            print(f"Extracted: {filename} -> {txt_path}")
+
+
+def batch_merge_pdfs(folder_path, output_path):
+    """Merge all PDFs in a folder into one."""
+    output = fitz.open()
+    files = sorted(f for f in os.listdir(folder_path) if f.lower().endswith(".pdf"))
+
+    for filename in files:
+        doc = fitz.open(os.path.join(folder_path, filename))
+        output.insert_pdf(doc)
+        doc.close()
+        print(f"Added: {filename}")
+
+    output.save(output_path)
+    output.close()
+    print(f"Merged {len(files)} PDFs -> {output_path}")
+\`\`\`
+
+### Invoice / Report Generator
+
+\`\`\`python
+from fpdf import FPDF
+from datetime import datetime
+
+def generate_invoice(invoice_data, output_path):
+    """
+    invoice_data = {
+        "number": "INV-2026-001",
+        "date": "2026-02-16",
+        "company": "Example Corp",
+        "items": [
+            {"description": "Engineering Services", "qty": 40, "rate": 150},
+            {"description": "Design Review", "qty": 8, "rate": 200},
+        ]
+    }
+    """
+
+    class InvoicePDF(FPDF):
+        def header(self):
+            self.set_font("Helvetica", "B", 20)
+            self.set_text_color(0, 113, 197)
+            self.cell(w=0, text="INVOICE", align="R", new_x="LMARGIN", new_y="NEXT")
+            self.line(10, 25, self.w - 10, 25)
+            self.ln(10)
+
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(128, 128, 128)
+            self.cell(w=0, text=f"Page {self.page_no()}", align="C")
+
+    pdf = InvoicePDF()
+    pdf.add_page()
+
+    # Invoice details
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(w=95, text=f"Invoice #: {invoice_data['number']}", new_x="RIGHT")
+    pdf.cell(w=95, text=f"Date: {invoice_data['date']}", align="R",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(w=0, text=f"To: {invoice_data['company']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(15)
+
+    # Table header
+    col_w = [80, 30, 35, 45]
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_fill_color(0, 113, 197)
+    pdf.set_text_color(255, 255, 255)
+    for i, h in enumerate(["Description", "Qty", "Rate", "Amount"]):
+        pdf.cell(w=col_w[i], h=10, text=h, border=1, align="C", fill=True,
+                 new_x="RIGHT", new_y="TOP")
+    pdf.ln()
+
+    # Table rows
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(0, 0, 0)
+    total = 0
+    for item in invoice_data["items"]:
+        amount = item["qty"] * item["rate"]
+        total += amount
+        pdf.cell(w=col_w[0], h=8, text=item["description"], border=1, new_x="RIGHT", new_y="TOP")
+        pdf.cell(w=col_w[1], h=8, text=str(item["qty"]), border=1, align="C", new_x="RIGHT", new_y="TOP")
+        pdf.cell(w=col_w[2], h=8, text=f"\${item['rate']:,.2f}", border=1, align="R", new_x="RIGHT", new_y="TOP")
+        pdf.cell(w=col_w[3], h=8, text=f"\${amount:,.2f}", border=1, align="R", new_x="LMARGIN", new_y="NEXT")
+
+    # Total
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(w=sum(col_w[:3]), h=12, text="TOTAL", border=1, align="R", new_x="RIGHT", new_y="TOP")
+    pdf.cell(w=col_w[3], h=12, text=f"\${total:,.2f}", border=1, align="R",
+             new_x="LMARGIN", new_y="NEXT")
+
+    pdf.output(output_path)
+    print(f"Invoice saved: {output_path}")
+
+
+# Usage
+generate_invoice({
+    "number": "INV-2026-042",
+    "date": "2026-02-16",
+    "company": "Example Corp",
+    "items": [
+        {"description": "Engineering Services", "qty": 40, "rate": 150},
+        {"description": "Design Review", "qty": 8, "rate": 200},
+    ]
+}, "invoice.pdf")
+\`\`\`
+
+---
+
+## PowerShell Integration
+
+Call the Python scripts from PowerShell to stay consistent with the other guides:
+
+\`\`\`powershell
+$python = "python"
+
+# Set proxy (a corporate network)
+$env:NO_PROXY = ".openai.azure.com,10.*,example.com,.example.com,10.0.0.0/8,192.168.0.0/16,localhost,.local,127.0.0.0/8,172.16.0.0/12,134.134.0.0/16,.search.windows.net"
+$env:HTTP_PROXY = "http://proxy.example.com:8080"
+$env:HTTPS_PROXY = "http://proxy.example.com:8080"
+
+# Extract text from a PDF
+& $python -c "
+import fitz
+doc = fitz.open(r'C:\\path\\to\\file.pdf')
+for page in doc:
+    print(page.get_text())
+doc.close()
+"
+
+# Convert PDF to markdown with AI image analysis
+& $python "C:\\path\\to\\pdf_to_markdown.py" "input.pdf" "output.md"
+
+# Quick image extraction
+& $python -c "
+import fitz
+doc = fitz.open(r'C:\\path\\to\\file.pdf')
+for i, page in enumerate(doc):
+    for j, img in enumerate(page.get_images(full=True)):
+        xref = img[0]
+        data = doc.extract_image(xref)
+        with open(f'page{i+1}_img{j+1}.{data[\\"ext\\"]}', 'wb') as f:
+            f.write(data['image'])
+        print(f'Saved page{i+1}_img{j+1}.{data[\\"ext\\"]}')
+doc.close()
+"
+\`\`\`
+
+---
+
+## Library Reference
+
+### PyMuPDF (fitz) — Key Methods
+
+| Method                        | Description                              |
+|-------------------------------|------------------------------------------|
+| \`fitz.open(path)\`             | Open a PDF                               |
+| \`doc.page_count\`              | Number of pages                          |
+| \`doc.metadata\`                | Dict of title, author, etc.              |
+| \`doc.get_toc()\`               | Table of contents (bookmarks)            |
+| \`doc[n]\`                      | Get page n (0-indexed)                   |
+| \`page.get_text(opt)\`          | Extract text ("text", "html", "dict", "json", "words") |
+| \`page.get_images(full=True)\`  | List embedded images                     |
+| \`doc.extract_image(xref)\`     | Get image bytes by xref                  |
+| \`page.find_tables()\`          | Detect and extract tables                |
+| \`page.get_links()\`            | Get hyperlinks                           |
+| \`page.search_for(text)\`       | Search text, returns Rects               |
+| \`page.get_pixmap(matrix)\`     | Render page as image                     |
+| \`page.insert_text(point, text)\` | Add text to page                       |
+| \`page.add_highlight_annot(rect)\` | Add highlight annotation              |
+| \`page.add_redact_annot(rect)\` | Add redaction                            |
+| \`page.apply_redactions()\`     | Apply all redactions                     |
+| \`doc.insert_pdf(other)\`       | Merge another PDF                        |
+| \`doc.save(path)\`              | Save the document                        |
+
+### fpdf2 — Key Methods
+
+| Method                          | Description                            |
+|---------------------------------|----------------------------------------|
+| \`FPDF()\`                       | Create new PDF                          |
+| \`pdf.add_page()\`               | Add a page                              |
+| \`pdf.set_font(family, style, size)\` | Set font                           |
+| \`pdf.cell(w, h, text, ...)\`    | Write a cell                            |
+| \`pdf.multi_cell(w, text)\`      | Write wrapping text                     |
+| \`pdf.write(text=...)\`          | Write inline text                       |
+| \`pdf.image(path, x, y, w, h)\`  | Add image                               |
+| \`pdf.set_text_color(r, g, b)\`  | Text color                              |
+| \`pdf.set_fill_color(r, g, b)\`  | Fill color                              |
+| \`pdf.line(x1, y1, x2, y2)\`    | Draw a line                             |
+| \`pdf.rect(x, y, w, h)\`        | Draw rectangle                          |
+| \`pdf.ln(h)\`                    | Line break                              |
+| \`pdf.add_link(page=n)\`         | Create internal link target             |
+| \`pdf.output(path)\`             | Save PDF                                |
+
+### ReportLab — Key Components
+
+| Component                       | Description                            |
+|---------------------------------|----------------------------------------|
+| \`canvas.Canvas(path)\`          | Low-level PDF canvas                    |
+| \`SimpleDocTemplate(path)\`      | High-level flowing document             |
+| \`Paragraph(text, style)\`       | Formatted paragraph                     |
+| \`Table(data)\`                  | Table with data                         |
+| \`TableStyle(cmds)\`             | Table styling commands                  |
+| \`Image(path, w, h)\`           | Image element                           |
+| \`Spacer(w, h)\`                | Vertical space                          |
+| \`getSampleStyleSheet()\`       | Built-in paragraph styles               |
+
+---
+
+## PDF Read/Write Operations (PyMuPDF)
+
+> **For AI Assistant**: Use this guide when the user needs to read, create, modify, or extract content from PDF files. The library is \`PyMuPDF\`, imported as \`fitz\`.
+
+---
+
+## Setup
+\`\`\`python
+import fitz  # PyMuPDF
+\`\`\`
+
+## Read PDF Text
+\`\`\`python
+doc = fitz.open("document.pdf")
+print(f"Pages: {doc.page_count}")
+print(f"Author: {doc.metadata.get('author', 'N/A')}")
+
+for page in doc:
+    text = page.get_text()
+    print(f"--- Page {page.number + 1} ---")
+    print(text)
+
+doc.close()
+\`\`\`
+
+## Read Specific Pages
+\`\`\`python
+doc = fitz.open("document.pdf")
+page = doc[0]  # First page (0-indexed)
+text = page.get_text()
+doc.close()
+\`\`\`
+
+## Extract Text as Structured Blocks
+\`\`\`python
+doc = fitz.open("document.pdf")
+for page in doc:
+    blocks = page.get_text("blocks")  # Returns list of (x0, y0, x1, y1, text, block_no, block_type)
+    for b in blocks:
+        print(b[4])  # text content
+doc.close()
+\`\`\`
+
+## Search for Text in PDF
+\`\`\`python
+doc = fitz.open("document.pdf")
+for page in doc:
+    results = page.search_for("keyword")
+    for rect in results:
+        print(f"Found on page {page.number + 1} at {rect}")
+doc.close()
+\`\`\`
+
+## Extract Images from PDF
+\`\`\`python
+doc = fitz.open("document.pdf")
+for page_num, page in enumerate(doc):
+    images = page.get_images(full=True)
+    for img_index, img in enumerate(images):
+        xref = img[0]
+        base_image = doc.extract_image(xref)
+        image_bytes = base_image["image"]
+        ext = base_image["ext"]
+        with open(f"image_p{page_num}_{img_index}.{ext}", "wb") as f:
+            f.write(image_bytes)
+doc.close()
+\`\`\`
+
+## Create a New PDF
+\`\`\`python
+doc = fitz.open()  # New empty PDF
+page = doc.new_page(width=595, height=842)  # A4 size in points
+text_point = fitz.Point(72, 72)  # 1 inch from top-left
+page.insert_text(text_point, "Hello, World!", fontsize=14)
+doc.save("output.pdf")
+doc.close()
+\`\`\`
+
+## Add Text to Existing PDF (Annotate)
+\`\`\`python
+doc = fitz.open("existing.pdf")
+page = doc[0]
+text_point = fitz.Point(72, 750)
+page.insert_text(text_point, "Added annotation", fontsize=10, color=(1, 0, 0))  # Red text
+doc.save("annotated.pdf")
+doc.close()
+\`\`\`
+
+## Merge PDFs
+\`\`\`python
+doc_out = fitz.open()  # New empty
+for pdf_path in ["file1.pdf", "file2.pdf", "file3.pdf"]:
+    doc_in = fitz.open(pdf_path)
+    doc_out.insert_pdf(doc_in)
+    doc_in.close()
+doc_out.save("merged.pdf")
+doc_out.close()
+\`\`\`
+
+## Split PDF (Extract Pages)
+\`\`\`python
+doc = fitz.open("large.pdf")
+doc_out = fitz.open()
+doc_out.insert_pdf(doc, from_page=2, to_page=5)  # Pages 3-6 (0-indexed)
+doc_out.save("pages_3_to_6.pdf")
+doc.close()
+doc_out.close()
+\`\`\`
+
+## Get PDF Metadata
+\`\`\`python
+doc = fitz.open("document.pdf")
+meta = doc.metadata
+# Keys: format, title, author, subject, keywords, creator, producer, creationDate, modDate
+for key, value in meta.items():
+    if value:
+        print(f"{key}: {value}")
+doc.close()
+\`\`\`
+
+## Set PDF Metadata
+\`\`\`python
+doc = fitz.open("document.pdf")
+doc.set_metadata({
+    "title": "My Document",
+    "author": "Author Name",
+    "subject": "Subject",
+})
+doc.save("updated.pdf")
+doc.close()
+\`\`\`
+
+## Convert PDF Page to Image
+\`\`\`python
+doc = fitz.open("document.pdf")
+page = doc[0]
+pix = page.get_pixmap(dpi=150)
+pix.save("page1.png")
+doc.close()
+\`\`\`
+
+---
+
+## Common Workflows for AI Assistant
+
+### Read email attachment PDF and summarize
+\`\`\`python
+import fitz
+
+doc = fitz.open(r"C:\\path\\to\\attachment.pdf")
+full_text = ""
+for page in doc:
+    full_text += page.get_text()
+doc.close()
+print(full_text)
+# Then summarize the text
+\`\`\`
+
+### Save PDF text to a file for reference
+\`\`\`python
+import fitz
+
+doc = fitz.open(r"C:\\path\\to\\document.pdf")
+with open("extracted_text.txt", "w", encoding="utf-8") as f:
+    for page in doc:
+        f.write(f"--- Page {page.number + 1} ---\\n")
+        f.write(page.get_text())
+        f.write("\\n")
+doc.close()
+\`\`\`
+
+---
+
+## Notes
+- PyMuPDF is imported as \`fitz\` (historical name from MuPDF library)
+- Page numbers are 0-indexed in the API
+- Default page size is A4 (595 x 842 points)
+- 1 point = 1/72 inch
+- Supports PDF, XPS, EPUB, MOBI, FB2, CBZ, SVG, and image formats
+
+---
+
+## Hebrew / RTL PDF Generation (fpdf2)
+
+> **For AI Assistant**: Use this section whenever generating PDFs containing Hebrew text.
+> fpdf2 does NOT have native RTL/bidi support. You MUST manually reshape text to visual order before passing it to \`cell()\` or \`multi_cell()\`.
+
+### Critical Rules
+
+1. **Always use a Hebrew-capable TTF font**  David (\`C:\\Windows\\Fonts\\david.ttf\`, \`davidbd.ttf\`) or Arial work well.
+2. **Do NOT pass \`uni=True\`** to \`add_font()\`  it's deprecated in fpdf2 and causes warnings.
+3. **All text must be reshaped to visual order** before rendering. Hebrew text in logical order will appear reversed and broken.
+4. **Parentheses are the #1 pain point**  naive RTL reversal puts \`(\` and \`)\` in wrong positions. Treat parenthesized groups as atomic units.
+5. **Use \`align="R"\`** for all Hebrew cells and multi_cells.
+
+### The Bidi Problem Explained
+
+PDF renderers (fpdf2, reportlab) lay out characters left-to-right. Hebrew logical order is right-to-left. A naive character reversal breaks:
+- **Parenthesized English inside Hebrew**: \`הגנת סייבר (OT)\` becomes \`(OT)\` with parens detached  \`הגנת סייבר ()OT\`
+- **Mixed Hebrew + English**: \`כולל Safety vs Security\`  English words get reversed letter-by-letter
+
+### Correct Approach: Tokenizer-Based Bidi Reshaping
+
+\`\`\`python
+def is_hebrew(ch):
+    return '\\u0590' <= ch <= '\\u05FF' or '\\uFB1D' <= ch <= '\\uFB4F'
+
+
+def reshape_rtl_line(text):
+    """Convert logical-order bidi text to visual order for LTR PDF rendering.
+
+    Algorithm:
+    1. Tokenize into: Hebrew runs, Latin/digit runs, paren groups (atomic), neutrals.
+    2. Resolve neutral directions based on surrounding strong types (default: RTL).
+    3. Group consecutive same-direction tokens into runs.
+    4. Reverse run order (RTL base direction).
+    5. Reverse characters within RTL runs; keep LTR runs as-is.
+    6. Recursively reshape paren-group contents.
+    """
+    if not text or not any(is_hebrew(c) for c in text):
+        return text
+
+    tokens = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        # Parenthesized group  treat as atomic unit
+        if ch in ('(', '[', '{'):
+            close_ch = {'(': ')', '[': ']', '{': '}'}[ch]
+            depth, j = 1, i + 1
+            while j < n and depth > 0:
+                if text[j] == ch:
+                    depth += 1
+                elif text[j] == close_ch:
+                    depth -= 1
+                j += 1
+            tokens.append({'type': 'paren', 'text': text[i:j]})
+            i = j
+        elif is_hebrew(ch):
+            j = i
+            while j < n and is_hebrew(text[j]):
+                j += 1
+            tokens.append({'type': 'rtl', 'text': text[i:j]})
+            i = j
+        elif ch.isalpha() or ch.isdigit():
+            j = i
+            while j < n and (text[j].isalpha() or text[j].isdigit()) and not is_hebrew(text[j]):
+                j += 1
+            tokens.append({'type': 'ltr', 'text': text[i:j]})
+            i = j
+        else:
+            tokens.append({'type': 'neutral', 'text': ch})
+            i += 1
+
+    # Resolve neutrals
+    for idx in range(len(tokens)):
+        if tokens[idx]['type'] != 'neutral':
+            continue
+        prev_dir = next_dir = None
+        for p in range(idx - 1, -1, -1):
+            if tokens[p]['type'] in ('rtl', 'ltr'):
+                prev_dir = tokens[p]['type']
+                break
+        for q in range(idx + 1, len(tokens)):
+            if tokens[q]['type'] in ('rtl', 'ltr'):
+                next_dir = tokens[q]['type']
+                break
+        if prev_dir == next_dir and prev_dir is not None:
+            tokens[idx]['type'] = prev_dir
+        else:
+            tokens[idx]['type'] = 'rtl'  # base direction fallback
+
+    # Group consecutive same-direction tokens
+    runs = []
+    for tok in tokens:
+        if runs and runs[-1]['type'] == tok['type']:
+            runs[-1]['text'] += tok['text']
+        else:
+            runs.append({'type': tok['type'], 'text': tok['text']})
+
+    # Reverse run order (RTL base)
+    runs.reverse()
+
+    # Build visual output
+    parts = []
+    for run in runs:
+        if run['type'] == 'rtl':
+            parts.append(run['text'][::-1])
+        elif run['type'] == 'ltr':
+            parts.append(run['text'])
+        elif run['type'] == 'paren':
+            inner = run['text'][1:-1]
+            open_ch = run['text'][0]
+            close_ch = run['text'][-1] if len(run['text']) > 1 else ''
+            reshaped_inner = reshape_rtl_line(inner) if inner and any(is_hebrew(c) for c in inner) else inner
+            parts.append(open_ch + reshaped_inner + close_ch)
+        else:
+            parts.append(run['text'])
+
+    return ''.join(parts)
+
+
+def rtl(text):
+    """Shorthand for reshaping a line."""
+    return reshape_rtl_line(text)
+\`\`\`
+
+### Font Setup (fpdf2)
+
+\`\`\`python
+from fpdf import FPDF
+
+pdf = FPDF()
+# Do NOT use uni=True  deprecated in fpdf2
+pdf.add_font("David", "", r"C:\\Windows\\Fonts\\david.ttf")
+pdf.add_font("David", "B", r"C:\\Windows\\Fonts\\davidbd.ttf")
+# Arial also works for Hebrew
+pdf.add_font("Arial", "", r"C:\\Windows\\Fonts\\arial.ttf")
+pdf.add_font("Arial", "B", r"C:\\Windows\\Fonts\\arialbd.ttf")
+\`\`\`
+
+### Rendering Hebrew Text
+
+\`\`\`python
+pdf.add_page()
+pdf.set_font("David", "B", 16)
+pdf.set_text_color(0, 0, 0)
+# ALWAYS reshape before rendering, ALWAYS align="R"
+pdf.cell(0, 10, rtl("הגנת סייבר על מערכות תפעוליות (OT)"), align="R",
+         new_x="LMARGIN", new_y="NEXT")
+
+# Multi-line Hebrew text
+text = "שורה ראשונה\\nשורה שנייה\\nשורה שלישית"
+for line in text.split('\\n'):
+    if line.strip():
+        pdf.cell(0, 7, rtl(line.strip()), align="R", new_x="LMARGIN", new_y="NEXT")
+\`\`\`
+
+### Hebrew Tables
+
+\`\`\`python
+# Column order is visual (left-to-right in PDF), but content is RTL.
+# Put the rightmost Hebrew column LAST in the col_widths array.
+col_widths = [25, 25, 140]  # type | hours | topic (topic is rightmost = widest)
+headers = [rtl("סוג"), rtl("שעות"), rtl("נושא")]
+
+pdf.set_font("David", "B", 10)
+pdf.set_fill_color(0, 90, 156)
+pdf.set_text_color(255, 255, 255)
+for i, hdr in enumerate(headers):
+    pdf.cell(col_widths[i], 7, hdr, border=1, align="C", fill=True,
+             new_x="RIGHT", new_y="TOP")
+pdf.ln()
+\`\`\`
+
+### Known Gotchas
+
+| Issue | Solution |
+|-------|----------|
+| Parentheses appear detached: \`()OT\` | Use tokenizer-based reshaper (above) that treats paren groups as atomic |
+| English words inside Hebrew appear letter-reversed | Tokenizer keeps LTR runs intact, only reverses run order |
+| \`uni=True\` warning in fpdf2 | Remove the parameter entirely  fpdf2 handles Unicode automatically with TTF |
+| David font missing glyph for \`\` (U+25CB) | Use \`\` (U+2022) or \`-\` as bullet characters instead |
+| Numbers appear reversed | Tokenizer treats digits as LTR  they stay in correct order |
+| Colon/comma between Hebrew words misplaced | Neutral-resolution step assigns direction based on surrounding strong types |
+| \`python-bidi\` library unavailable (pip timeout) | Use the built-in tokenizer above  no external dependency needed |
+
+### Recommended PDF Class Structure for Hebrew Documents
+
+\`\`\`python
+class HebrewPDF(FPDF):
+    def __init__(self, title_text=""):
+        super().__init__()
+        self.title_text = title_text
+        self.set_auto_page_break(auto=True, margin=20)
+        self.add_font("David", "", r"C:\\Windows\\Fonts\\david.ttf")
+        self.add_font("David", "B", r"C:\\Windows\\Fonts\\davidbd.ttf")
+
+    def header(self):
+        if self.page_no() > 1:
+            self.set_font("David", "B", 9)
+            self.set_text_color(120, 120, 120)
+            self.cell(0, 8, rtl(self.title_text), align="R")
+            self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("David", "", 8)
+        self.set_text_color(150, 150, 150)
+        self.cell(0, 10, f"{self.page_no()}/{{nb}}", align="C")
+
+    def section_header(self, text):
+        """Blue bar with white RTL text."""
+        self.set_fill_color(0, 90, 156)
+        self.rect(10, self.get_y(), self.w - 20, 10, style="F")
+        self.set_font("David", "B", 16)
+        self.set_text_color(255, 255, 255)
+        self.cell(0, 10, rtl(text), align="R", new_x="LMARGIN", new_y="NEXT")
+        self.ln(4)
+
+    def bullet_list(self, items):
+        """RTL bullet list using  character."""
+        self.set_font("David", "", 11)
+        self.set_text_color(30, 30, 30)
+        for item in items:
+            self.cell(0, 7, rtl(f"\\u2022  {item}"), align="R",
+                      new_x="LMARGIN", new_y="NEXT")
+        self.ln(2)
+\`\`\`
+
+### Python Environment Notes
+
+- Use Python 3.12: \`%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\`
+- fpdf2 is installed there. pip may have network issues  avoid relying on runtime installs.
+- Run scripts with: \`& "%USERPROFILE%\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" "script.py"\`
+`
+  },
+
+  // ── Excel PowerShell ──
+  {
+    id:          'excel-powershell',
+    name:        'Excel PowerShell',
+    description: 'Excel automation via PowerShell COM.',
+    category:    'Productivity',
+    tags:        ['excel', 'powershell', 'com', 'automation', 'spreadsheets'],
+    icon:        '📗',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Excel Powershell
+description: >
+  Excel automation via PowerShell COM.
+---
+
+# Excel Powershell
+
+## Excel Automation — PowerShell COM Guide
+
+**Source**: Drory Shohat (email, 2026-02-16)
+**Scope**: global | **Category**: tool-guide
+
+This guide covers reading and writing \`.xlsx\` files using **Excel COM automation** in PowerShell. Same COM pattern used for Outlook and Word in this workspace.
+
+---
+
+## Table of Contents
+
+- [Getting Started](#getting-started)
+- [Reading Workbooks](#reading-workbooks)
+  - [Open a Workbook](#open-a-workbook)
+  - [List Worksheets](#list-worksheets)
+  - [Read Cell Values](#read-cell-values)
+  - [Read a Range of Cells](#read-a-range-of-cells)
+  - [Read an Entire Used Range](#read-an-entire-used-range)
+  - [Read Named Ranges](#read-named-ranges)
+  - [Detect Formatting & Styles](#detect-formatting--styles)
+  - [Read Charts](#read-charts)
+  - [Read Formulas](#read-formulas)
+  - [Read Filters & AutoFilter](#read-filters--autofilter)
+  - [Read Pivot Tables](#read-pivot-tables)
+- [Writing Workbooks](#writing-workbooks)
+  - [Create a New Workbook](#create-a-new-workbook)
+  - [Add & Rename Worksheets](#add--rename-worksheets)
+  - [Write Cell Values](#write-cell-values)
+  - [Write a Range from an Array](#write-a-range-from-an-array)
+  - [Apply Cell Formatting](#apply-cell-formatting)
+  - [Apply Number Formats](#apply-number-formats)
+  - [Set Column Width & Row Height](#set-column-width--row-height)
+  - [Add Borders](#add-borders)
+  - [Merge Cells](#merge-cells)
+  - [Add Formulas](#add-formulas)
+  - [Add Hyperlinks](#add-hyperlinks)
+  - [Add Data Validation (Dropdowns)](#add-data-validation-dropdowns)
+  - [Add Conditional Formatting](#add-conditional-formatting)
+  - [Add AutoFilter](#add-autofilter)
+  - [Create Charts](#create-charts)
+  - [Add a Pivot Table](#add-a-pivot-table)
+  - [Freeze Panes](#freeze-panes)
+  - [Protect a Sheet](#protect-a-sheet)
+  - [Save the Workbook](#save-the-workbook)
+- [Practical Recipes](#practical-recipes)
+  - [CSV to Formatted Excel](#csv-to-formatted-excel)
+  - [Multi-Sheet Report](#multi-sheet-report)
+  - [Clone Conventions from Existing Workbook](#clone-conventions-from-existing-workbook)
+- [Common Constants Reference](#common-constants-reference)
+- [Cleanup & Best Practices](#cleanup--best-practices)
+
+---
+
+## Getting Started
+
+\`\`\`powershell
+$excel = New-Object -ComObject Excel.Application
+$excel.Visible = $false          # Set $true during development
+$excel.DisplayAlerts = $false    # Suppress save/overwrite prompts
+\`\`\`
+
+> **Important:** Always close workbooks and quit Excel when done to avoid orphaned \`EXCEL.EXE\` processes (see [Cleanup & Best Practices](#cleanup--best-practices)).
+
+---
+
+## Reading Workbooks
+
+### Open a Workbook
+
+\`\`\`powershell
+$wb = $excel.Workbooks.Open("C:\\path\\to\\file.xlsx")
+\`\`\`
+
+Open as **read-only**:
+
+\`\`\`powershell
+$wb = $excel.Workbooks.Open("C:\\path\\to\\file.xlsx", 0, $true)  # 3rd param = ReadOnly
+\`\`\`
+
+### List Worksheets
+
+\`\`\`powershell
+foreach ($ws in $wb.Worksheets) {
+    Write-Output "Sheet: $($ws.Name) | Index: $($ws.Index)"
+}
+\`\`\`
+
+### Read Cell Values
+
+\`\`\`powershell
+$ws = $wb.Worksheets.Item(1)   # By index (1-based)
+# or by name:
+$ws = $wb.Worksheets.Item("Sheet1")
+
+# Single cell
+$value = $ws.Cells.Item(1, 1).Value2      # Row 1, Col 1 (A1)
+$value = $ws.Range("B3").Value2            # Cell B3
+
+# .Value2 is faster than .Value (skips date/currency conversions)
+\`\`\`
+
+### Read a Range of Cells
+
+\`\`\`powershell
+# Read a rectangular range
+$range = $ws.Range("A1:D10")
+$data = $range.Value2   # Returns a 2D array [row, col]
+
+# Iterate the 2D array
+for ($r = 1; $r -le $data.GetLength(0); $r++) {
+    $row = @()
+    for ($c = 1; $c -le $data.GetLength(1); $c++) {
+        $row += $data[$r, $c]
+    }
+    Write-Output ($row -join " | ")
+}
+\`\`\`
+
+### Read an Entire Used Range
+
+\`\`\`powershell
+$used = $ws.UsedRange
+$rowCount = $used.Rows.Count
+$colCount = $used.Columns.Count
+Write-Output "Used range: $rowCount rows x $colCount columns"
+
+# Get all values as a 2D array
+$allData = $used.Value2
+
+# First row (headers)
+$headers = @()
+for ($c = 1; $c -le $colCount; $c++) {
+    $headers += $allData[1, $c]
+}
+Write-Output "Headers: $($headers -join ', ')"
+\`\`\`
+
+### Read Named Ranges
+
+\`\`\`powershell
+foreach ($name in $wb.Names) {
+    Write-Output "$($name.Name) = $($name.RefersTo)"
+}
+
+# Read value from a named range
+$namedValue = $ws.Range("MyNamedRange").Value2
+\`\`\`
+
+### Detect Formatting & Styles
+
+\`\`\`powershell
+$cell = $ws.Range("A1")
+[PSCustomObject]@{
+    FontName      = $cell.Font.Name
+    FontSize      = $cell.Font.Size
+    Bold          = [bool]$cell.Font.Bold
+    Italic        = [bool]$cell.Font.Italic
+    FontColor     = $cell.Font.Color        # Long value (BGR)
+    BgColor       = $cell.Interior.Color    # Background color
+    BgColorIndex  = $cell.Interior.ColorIndex
+    NumberFormat  = $cell.NumberFormat       # e.g. "0.00", "dd/mm/yyyy"
+    HAlign        = $cell.HorizontalAlignment
+    VAlign        = $cell.VerticalAlignment
+    WrapText      = [bool]$cell.WrapText
+    Merged        = [bool]$cell.MergeCells
+}
+\`\`\`
+
+### Read Charts
+
+\`\`\`powershell
+foreach ($chart in $ws.ChartObjects) {
+    [PSCustomObject]@{
+        Name      = $chart.Name
+        ChartType = $chart.Chart.ChartType
+        Width     = $chart.Width
+        Height    = $chart.Height
+        Top       = $chart.Top
+        Left      = $chart.Left
+    }
+}
+\`\`\`
+
+### Read Formulas
+
+\`\`\`powershell
+# Get the formula in a cell (instead of the computed value)
+$formula = $ws.Range("C2").Formula        # e.g. "=SUM(A2:B2)"
+$formulaR1C1 = $ws.Range("C2").FormulaR1C1  # e.g. "=SUM(RC[-2]:RC[-1])"
+\`\`\`
+
+### Read Filters & AutoFilter
+
+\`\`\`powershell
+if ($ws.AutoFilterMode) {
+    $af = $ws.AutoFilter
+    Write-Output "Filter range: $($af.Range.Address)"
+    foreach ($f in $af.Filters) {
+        if ($f.On) {
+            Write-Output "Filter on column $($f.Count): Criteria1=$($f.Criteria1)"
+        }
+    }
+}
+\`\`\`
+
+### Read Pivot Tables
+
+\`\`\`powershell
+foreach ($pt in $ws.PivotTables) {
+    Write-Output "Pivot: $($pt.Name)"
+    Write-Output "  Source: $($pt.SourceData)"
+    Write-Output "  Rows: $($pt.RowFields | ForEach-Object { $_.Name })"
+    Write-Output "  Columns: $($pt.ColumnFields | ForEach-Object { $_.Name })"
+    Write-Output "  Values: $($pt.DataFields | ForEach-Object { $_.Name })"
+}
+\`\`\`
+
+---
+
+## Writing Workbooks
+
+### Create a New Workbook
+
+\`\`\`powershell
+$excel = New-Object -ComObject Excel.Application
+$excel.Visible = $false
+$excel.DisplayAlerts = $false
+$wb = $excel.Workbooks.Add()
+$ws = $wb.Worksheets.Item(1)
+\`\`\`
+
+### Add & Rename Worksheets
+
+\`\`\`powershell
+# Rename the first sheet
+$ws.Name = "Summary"
+
+# Add new sheets
+$ws2 = $wb.Worksheets.Add()
+$ws2.Name = "Data"
+
+# Add sheet at the end
+$wsLast = $wb.Worksheets.Add([System.Reflection.Missing]::Value, $wb.Worksheets.Item($wb.Worksheets.Count))
+$wsLast.Name = "Appendix"
+
+# Delete a sheet
+$wb.Worksheets.Item("Sheet2").Delete()
+\`\`\`
+
+### Write Cell Values
+
+\`\`\`powershell
+$ws.Cells.Item(1, 1).Value2 = "Name"       # A1
+$ws.Cells.Item(1, 2).Value2 = "Score"       # B1
+$ws.Range("A2").Value2 = "Alice"
+$ws.Range("B2").Value2 = 95
+\`\`\`
+
+### Write a Range from an Array
+
+\`\`\`powershell
+# Write a header row
+$headers = @("Name", "Department", "Score", "Date")
+$ws.Range("A1:D1").Value2 = $headers
+
+# Write multiple rows at once (MUCH faster than cell-by-cell)
+$data = @(
+    @("Alice",   "Engineering", 95, "2026-01-15"),
+    @("Bob",     "Design",      88, "2026-01-16"),
+    @("Charlie", "Engineering", 92, "2026-01-17")
+)
+
+# Convert to 2D array for COM
+$rows = $data.Count
+$cols = $data[0].Count
+$array2D = New-Object 'object[,]' $rows, $cols
+for ($r = 0; $r -lt $rows; $r++) {
+    for ($c = 0; $c -lt $cols; $c++) {
+        $array2D[$r, $c] = $data[$r][$c]
+    }
+}
+$ws.Range("A2:D$($rows + 1)").Value2 = $array2D
+\`\`\`
+
+### Apply Cell Formatting
+
+\`\`\`powershell
+# Bold header row
+$ws.Range("A1:D1").Font.Bold = $true
+$ws.Range("A1:D1").Font.Size = 12
+$ws.Range("A1:D1").Font.Name = "Calibri"
+$ws.Range("A1:D1").Font.Color = 0xFFFFFF          # White text
+
+# Background color (header)
+$ws.Range("A1:D1").Interior.Color = 0x8B4513       # Dark blue (BGR)
+
+# Alignment
+$ws.Range("A1:D1").HorizontalAlignment = -4108     # xlCenter
+$ws.Range("A1:D1").VerticalAlignment = -4108        # xlCenter
+
+# Italic
+$ws.Range("A2").Font.Italic = $true
+
+# Underline
+$ws.Range("A2").Font.Underline = 2                  # xlUnderlineStyleSingle
+\`\`\`
+
+### Apply Number Formats
+
+\`\`\`powershell
+# Currency
+$ws.Range("C2:C100").NumberFormat = '$#,##0.00'
+
+# Percentage
+$ws.Range("D2:D100").NumberFormat = '0.0%'
+
+# Date
+$ws.Range("E2:E100").NumberFormat = 'dd/mm/yyyy'
+
+# Integer with comma separator
+$ws.Range("F2:F100").NumberFormat = '#,##0'
+
+# Custom text format
+$ws.Range("G2:G100").NumberFormat = '@'   # Force text
+\`\`\`
+
+### Set Column Width & Row Height
+
+\`\`\`powershell
+# Set specific column width
+$ws.Columns.Item(1).ColumnWidth = 20     # Column A
+$ws.Columns.Item(2).ColumnWidth = 15     # Column B
+
+# Auto-fit all used columns
+$ws.UsedRange.EntireColumn.AutoFit()
+
+# Auto-fit specific columns
+$ws.Range("A:D").EntireColumn.AutoFit()
+
+# Set row height
+$ws.Rows.Item(1).RowHeight = 30    # Header row height
+\`\`\`
+
+### Add Borders
+
+\`\`\`powershell
+# All borders on a range
+$range = $ws.Range("A1:D10")
+
+# Border edges: 7=Left, 8=Top, 9=Bottom, 10=Right, 11=InsideVertical, 12=InsideHorizontal
+foreach ($edge in @(7, 8, 9, 10, 11, 12)) {
+    $border = $range.Borders.Item($edge)
+    $border.LineStyle = 1         # xlContinuous
+    $border.Weight = 2            # xlThin
+    $border.Color = 0x000000      # Black
+}
+
+# Thick bottom border on header row only
+$ws.Range("A1:D1").Borders.Item(9).LineStyle = 1
+$ws.Range("A1:D1").Borders.Item(9).Weight = 4    # xlThick
+\`\`\`
+
+### Merge Cells
+
+\`\`\`powershell
+# Merge a range
+$ws.Range("A1:D1").Merge()
+
+# Unmerge
+$ws.Range("A1:D1").UnMerge()
+
+# Merge + center
+$ws.Range("A1:D1").Merge()
+$ws.Range("A1").Value2 = "Report Title"
+$ws.Range("A1").HorizontalAlignment = -4108  # xlCenter
+$ws.Range("A1").Font.Size = 16
+$ws.Range("A1").Font.Bold = $true
+\`\`\`
+
+### Add Formulas
+
+\`\`\`powershell
+# Simple formula
+$ws.Range("C2").Formula = "=A2+B2"
+
+# SUM
+$ws.Range("C10").Formula = "=SUM(C2:C9)"
+
+# VLOOKUP
+$ws.Range("E2").Formula = '=VLOOKUP(A2,Sheet2!A:B,2,FALSE)'
+
+# IF
+$ws.Range("F2").Formula = '=IF(C2>90,"Pass","Fail")'
+
+# COUNTIF
+$ws.Range("G1").Formula = '=COUNTIF(C2:C100,">90")'
+
+# Fill down a formula
+$ws.Range("C2").Formula = "=A2*B2"
+$ws.Range("C2").AutoFill($ws.Range("C2:C100"))
+\`\`\`
+
+### Add Hyperlinks
+
+\`\`\`powershell
+# External URL
+$ws.Hyperlinks.Add(
+    $ws.Range("A5"),                  # Anchor cell
+    "https://www.example.com",        # URL
+    "",                                # SubAddress
+    "Click to open",                  # ScreenTip
+    "Visit Example"                   # TextToDisplay
+)
+
+# Link to another sheet in the same workbook
+$ws.Hyperlinks.Add(
+    $ws.Range("A6"),
+    "",                                # No external URL
+    "'Data'!A1",                      # SubAddress: sheet + cell
+    "Go to Data sheet",
+    "Jump to Data"
+)
+
+# Email link
+$ws.Hyperlinks.Add(
+    $ws.Range("A7"),
+    "mailto:someone@example.com",
+    "",
+    "Send email",
+    "Contact Support"
+)
+\`\`\`
+
+### Add Data Validation (Dropdowns)
+
+\`\`\`powershell
+$cell = $ws.Range("B2:B100")
+$validation = $cell.Validation
+$validation.Delete()   # Clear existing validation
+$validation.Add(
+    3,                 # xlValidateList
+    1,                 # xlValidAlertStop
+    1,                 # Operator (ignored for lists)
+    "Engineering,Design,Marketing,Sales"  # Comma-separated list
+)
+$validation.ShowInput = $true
+$validation.InputTitle = "Department"
+$validation.InputMessage = "Select a department"
+$validation.ShowError = $true
+$validation.ErrorTitle = "Invalid"
+$validation.ErrorMessage = "Please select from the list"
+\`\`\`
+
+### Add Conditional Formatting
+
+\`\`\`powershell
+# Highlight cells > 90 in green
+$range = $ws.Range("C2:C100")
+$cf = $range.FormatConditions.Add(1, 5, 90)  # 1=xlCellValue, 5=xlGreater
+$cf.Interior.Color = 0x00FF00   # Green (BGR)
+$cf.Font.Bold = $true
+
+# Highlight cells < 60 in red
+$cf2 = $range.FormatConditions.Add(1, 6, 60)  # 6=xlLess
+$cf2.Interior.Color = 0x0000FF  # Red (BGR)
+$cf2.Font.Color = 0xFFFFFF      # White text
+
+# Color scale (3-color: Red → Yellow → Green)
+$cf3 = $range.FormatConditions.AddColorScale(3)
+$cf3.ColorScaleCriteria.Item(1).FormatColor.Color = 0x0000FF  # Red (low)
+$cf3.ColorScaleCriteria.Item(2).FormatColor.Color = 0x00FFFF  # Yellow (mid)
+$cf3.ColorScaleCriteria.Item(3).FormatColor.Color = 0x00FF00  # Green (high)
+
+# Data bars
+$db = $range.FormatConditions.AddDatabar()
+$db.BarColor.Color = 0xFF8C00  # Orange
+\`\`\`
+
+### Add AutoFilter
+
+\`\`\`powershell
+# Enable AutoFilter on header row
+$ws.Range("A1:D1").AutoFilter()
+
+# Apply a filter on column 2 (Department = Engineering)
+$ws.Range("A1:D1").AutoFilter(2, "Engineering")
+
+# Multiple criteria (Engineering OR Design)
+$ws.Range("A1:D1").AutoFilter(2, "Engineering", 7, "Design")  # 7 = xlOr
+
+# Clear all filters
+if ($ws.AutoFilterMode) { $ws.AutoFilter.ShowAllData() }
+\`\`\`
+
+### Create Charts
+
+\`\`\`powershell
+# Add a chart object to the sheet
+$chartObj = $ws.ChartObjects.Add(300, 50, 500, 300)  # Left, Top, Width, Height
+$chart = $chartObj.Chart
+
+# Set chart type
+$chart.ChartType = 51     # xlColumnClustered (see constants below)
+
+# Set data source
+$chart.SetSourceData($ws.Range("A1:C5"))
+
+# Title
+$chart.HasTitle = $true
+$chart.ChartTitle.Text = "Scores by Person"
+
+# Axis labels
+$chart.Axes(1).HasTitle = $true      # 1 = xlCategory (X axis)
+$chart.Axes(1).AxisTitle.Text = "Name"
+$chart.Axes(2).HasTitle = $true      # 2 = xlValue (Y axis)
+$chart.Axes(2).AxisTitle.Text = "Score"
+
+# Legend
+$chart.HasLegend = $true
+$chart.Legend.Position = -4107   # xlBottom
+
+# Style
+$chart.ApplyLayout(1)
+\`\`\`
+
+**Common Chart Types:**
+
+| Chart Type          | Value |
+|---------------------|-------|
+| xlColumnClustered   | 51    |
+| xlColumnStacked     | 52    |
+| xlBarClustered      | 57    |
+| xlLine              | 4     |
+| xlLineMarkers       | 65    |
+| xlPie               | 5     |
+| xlXYScatter         | -4169 |
+| xlArea              | 1     |
+| xlDoughnut          | -4120 |
+| xl3DColumnClustered | 54    |
+
+### Add a Pivot Table
+
+\`\`\`powershell
+# Define source data range
+$sourceRange = $ws.Range("A1:D100")
+
+# Create a pivot cache
+$pivotCache = $wb.PivotCaches().Create(1, $sourceRange)  # 1 = xlDatabase
+
+# Add pivot table to a new sheet
+$pivotSheet = $wb.Worksheets.Add()
+$pivotSheet.Name = "Pivot"
+$pivotTable = $pivotCache.CreatePivotTable($pivotSheet.Range("A3"), "SalesPivot")
+
+# Add fields
+$pivotTable.PivotFields("Department").Orientation = 1   # xlRowField
+$pivotTable.PivotFields("Name").Orientation = 2          # xlColumnField
+
+$dataField = $pivotTable.AddDataField($pivotTable.PivotFields("Score"), "Avg Score", -4106)
+# -4106 = xlAverage (use -4157 for xlSum)
+\`\`\`
+
+### Freeze Panes
+
+\`\`\`powershell
+# Freeze top row (header)
+$ws.Activate()
+$excel.ActiveWindow.SplitRow = 1
+$excel.ActiveWindow.FreezePanes = $true
+
+# Freeze first column
+$excel.ActiveWindow.SplitColumn = 1
+$excel.ActiveWindow.FreezePanes = $true
+
+# Freeze at cell B2 (first row AND first column frozen)
+$ws.Range("B2").Select()
+$excel.ActiveWindow.FreezePanes = $true
+\`\`\`
+
+### Protect a Sheet
+
+\`\`\`powershell
+# Protect with password
+$ws.Protect("myPassword123", $true, $true, $true)
+# Args: Password, DrawingObjects, Contents, Scenarios
+
+# Protect but allow filtering
+$ws.Protect("myPassword123", $true, $true, $true, $false, $false, $false, $false, $false, $false, $false, $false, $false, $false, $true, $false)
+# The 15th parameter allows AutoFilter
+
+# Unprotect
+$ws.Unprotect("myPassword123")
+
+# Protect workbook structure (prevent adding/deleting sheets)
+$wb.Protect("myPassword123", $true, $false)  # Structure=True, Windows=False
+\`\`\`
+
+### Save the Workbook
+
+\`\`\`powershell
+# Save as .xlsx (default format)
+$savePath = "C:\\path\\to\\output.xlsx"
+$wb.SaveAs($savePath, 51)   # 51 = xlOpenXMLWorkbook (.xlsx)
+
+# Other format constants:
+#   51 = xlOpenXMLWorkbook        (.xlsx)
+#   52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)
+#   50 = xlExcel12                (.xlsb, binary)
+#   56 = xlCSV                    (.csv)
+#   -4158 = xlWorkbookNormal      (.xls, legacy)
+#   57 = xlCurrentPlatformText    (.txt)
+
+# Save as CSV
+$wb.SaveAs("C:\\path\\to\\output.csv", 56)
+
+# Save as PDF
+$ws.ExportAsFixedFormat(0, "C:\\path\\to\\output.pdf")  # 0 = xlTypePDF
+\`\`\`
+
+---
+
+## Practical Recipes
+
+### CSV to Formatted Excel
+
+\`\`\`powershell
+$excel = New-Object -ComObject Excel.Application
+$excel.Visible = $false
+$excel.DisplayAlerts = $false
+
+# Import CSV
+$csvPath = "C:\\path\\to\\data.csv"
+$wb = $excel.Workbooks.Open($csvPath)
+$ws = $wb.Worksheets.Item(1)
+
+# Format as table
+$usedRange = $ws.UsedRange
+$colCount = $usedRange.Columns.Count
+$rowCount = $usedRange.Rows.Count
+
+# Bold & color header row
+$headerRange = $ws.Range($ws.Cells(1,1), $ws.Cells(1, $colCount))
+$headerRange.Font.Bold = $true
+$headerRange.Font.Color = 0xFFFFFF
+$headerRange.Interior.Color = 0x8B4513
+
+# Borders on all data
+$allRange = $ws.Range($ws.Cells(1,1), $ws.Cells($rowCount, $colCount))
+foreach ($edge in @(7,8,9,10,11,12)) {
+    $allRange.Borders.Item($edge).LineStyle = 1
+    $allRange.Borders.Item($edge).Weight = 2
+}
+
+# AutoFit
+$usedRange.EntireColumn.AutoFit()
+
+# AutoFilter
+$headerRange.AutoFilter() | Out-Null
+
+# Freeze header row
+$ws.Range("A2").Select()
+$excel.ActiveWindow.FreezePanes = $true
+
+# Save as xlsx
+$xlsxPath = $csvPath -replace '\\.csv$', '.xlsx'
+$wb.SaveAs($xlsxPath, 51)
+$wb.Close()
+$excel.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+\`\`\`
+
+### Multi-Sheet Report
+
+\`\`\`powershell
+$excel = New-Object -ComObject Excel.Application
+$excel.Visible = $false
+$excel.DisplayAlerts = $false
+$wb = $excel.Workbooks.Add()
+
+# --- Summary Sheet ---
+$summary = $wb.Worksheets.Item(1)
+$summary.Name = "Summary"
+$summary.Range("A1").Value2 = "Quarterly Report"
+$summary.Range("A1").Font.Size = 18
+$summary.Range("A1").Font.Bold = $true
+$summary.Range("A3").Value2 = "Generated:"
+$summary.Range("B3").Value2 = (Get-Date).ToString("yyyy-MM-dd HH:mm")
+
+# Add links to other sheets
+$summary.Hyperlinks.Add($summary.Range("A5"), "", "'Q1 Data'!A1", "", "Q1 Data")
+$summary.Hyperlinks.Add($summary.Range("A6"), "", "'Q2 Data'!A1", "", "Q2 Data")
+
+# --- Q1 Data Sheet ---
+$q1 = $wb.Worksheets.Add([System.Reflection.Missing]::Value, $summary)
+$q1.Name = "Q1 Data"
+$q1.Range("A1:C1").Value2 = @("Metric", "Target", "Actual")
+$q1.Range("A1:C1").Font.Bold = $true
+$q1.Range("A2").Value2 = "Revenue"
+$q1.Range("B2").Value2 = 1000000
+$q1.Range("C2").Value2 = 1050000
+$q1.Range("B2:C2").NumberFormat = '$#,##0'
+
+# --- Q2 Data Sheet ---
+$q2 = $wb.Worksheets.Add([System.Reflection.Missing]::Value, $q1)
+$q2.Name = "Q2 Data"
+$q2.Range("A1:C1").Value2 = @("Metric", "Target", "Actual")
+$q2.Range("A1:C1").Font.Bold = $true
+
+$wb.SaveAs("C:\\path\\to\\QuarterlyReport.xlsx", 51)
+$wb.Close()
+$excel.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+\`\`\`
+
+### Clone Conventions from Existing Workbook
+
+#### Phase 1 — Analyze Source Workbook
+
+\`\`\`powershell
+$excel = New-Object -ComObject Excel.Application
+$excel.Visible = $false
+$wb = $excel.Workbooks.Open("C:\\path\\to\\source.xlsx", 0, $true)
+
+# --- Workbook-level info ---
+[PSCustomObject]@{
+    SheetCount   = $wb.Worksheets.Count
+    SheetNames   = ($wb.Worksheets | ForEach-Object { $_.Name }) -join ", "
+    HasMacros    = $wb.HasVBProject
+    NamedRanges  = $wb.Names.Count
+}
+
+# --- Per-sheet analysis ---
+foreach ($ws in $wb.Worksheets) {
+    Write-Output "\`n=== Sheet: $($ws.Name) ==="
+    $used = $ws.UsedRange
+    Write-Output "  Rows: $($used.Rows.Count), Cols: $($used.Columns.Count)"
+    Write-Output "  AutoFilter: $($ws.AutoFilterMode)"
+    Write-Output "  Charts: $($ws.ChartObjects.Count)"
+    Write-Output "  PivotTables: $($ws.PivotTables().Count)"
+
+    # Sample formatting from first row
+    for ($c = 1; $c -le [Math]::Min($used.Columns.Count, 10); $c++) {
+        $cell = $ws.Cells.Item(1, $c)
+        Write-Output "  Col $c | Font: $($cell.Font.Name) $($cell.Font.Size)pt | Bold: $($cell.Font.Bold) | NumFmt: $($cell.NumberFormat) | BG: $($cell.Interior.Color)"
+    }
+}
+
+# --- Column widths ---
+foreach ($ws in $wb.Worksheets) {
+    $widths = @()
+    for ($c = 1; $c -le $ws.UsedRange.Columns.Count; $c++) {
+        $widths += "$c=$($ws.Columns.Item($c).ColumnWidth)"
+    }
+    Write-Output "Widths ($($ws.Name)): $($widths -join ', ')"
+}
+
+$wb.Close($false)
+$excel.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+\`\`\`
+
+#### Phase 2 — Recreate with Same Conventions
+
+Use the extracted font names, sizes, colors, number formats, column widths, and structure to rebuild the workbook using the writing techniques above.
+
+---
+
+## Common Constants Reference
+
+### xlFileFormat (Save Formats)
+
+| Constant                          | Value  | Extension |
+|-----------------------------------|--------|-----------|
+| \`xlOpenXMLWorkbook\`               | 51     | \`.xlsx\`   |
+| \`xlOpenXMLWorkbookMacroEnabled\`   | 52     | \`.xlsm\`   |
+| \`xlExcel12\`                       | 50     | \`.xlsb\`   |
+| \`xlCSV\`                           | 56     | \`.csv\`    |
+| \`xlWorkbookNormal\`                | -4158  | \`.xls\`    |
+
+### xlHAlign (Horizontal Alignment)
+
+| Alignment | Value  |
+|-----------|--------|
+| General   | 1      |
+| Left      | -4131  |
+| Center    | -4108  |
+| Right     | -4152  |
+| Justify   | -4130  |
+
+### xlVAlign (Vertical Alignment)
+
+| Alignment | Value  |
+|-----------|--------|
+| Top       | -4160  |
+| Center    | -4108  |
+| Bottom    | -4107  |
+
+### xlBordersIndex
+
+| Border          | Value |
+|-----------------|-------|
+| Left            | 7     |
+| Top             | 8     |
+| Bottom          | 9     |
+| Right           | 10    |
+| InsideVertical  | 11    |
+| InsideHorizontal| 12    |
+
+### xlBorderWeight
+
+| Weight     | Value |
+|------------|-------|
+| Hairline   | 1     |
+| Thin       | 2     |
+| Medium     | -4138 |
+| Thick      | 4     |
+
+### xlLineStyle
+
+| Style       | Value |
+|-------------|-------|
+| Continuous  | 1     |
+| Dash        | -4115 |
+| Dot         | -4118 |
+| DashDot     | 4     |
+| Double      | -4119 |
+| None        | -4142 |
+
+### xlChartType (Common)
+
+| Chart                | Value  |
+|----------------------|--------|
+| Column Clustered     | 51     |
+| Column Stacked       | 52     |
+| Bar Clustered        | 57     |
+| Line                 | 4      |
+| Line with Markers    | 65     |
+| Pie                  | 5      |
+| XY Scatter           | -4169  |
+| Area                 | 1      |
+
+### xlConsolidationFunction
+
+| Function | Value  |
+|----------|--------|
+| Sum      | -4157  |
+| Count    | -4112  |
+| Average  | -4106  |
+| Max      | -4136  |
+| Min      | -4139  |
+
+### xlPivotFieldOrientation
+
+| Orientation | Value |
+|-------------|-------|
+| Row         | 1     |
+| Column      | 2     |
+| Page        | 3     |
+| Data        | 4     |
+
+### Common Colors (BGR Format)
+
+| Color        | Value      |
+|--------------|------------|
+| Black        | \`0x000000\` |
+| White        | \`0xFFFFFF\` |
+| Red          | \`0x0000FF\` |
+| Green        | \`0x00FF00\` |
+| Blue         | \`0xFF0000\` |
+| Yellow       | \`0x00FFFF\` |
+| Orange       | \`0x00A5FF\` |
+| Light Gray   | \`0xD3D3D3\` |
+| Dark Blue    | \`0x8B0000\` |
+
+---
+
+## Cleanup & Best Practices
+
+**Always close and quit** to avoid orphaned Excel processes:
+
+\`\`\`powershell
+$wb.Close($false)     # $false = don't save; $true = save
+$excel.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+\`\`\`
+
+**Kill orphaned processes** (if needed):
+
+\`\`\`powershell
+Get-Process EXCEL -ErrorAction SilentlyContinue | Stop-Process -Force
+\`\`\`
+
+**Use try/finally for safe cleanup:**
+
+\`\`\`powershell
+$excel = New-Object -ComObject Excel.Application
+$excel.Visible = $false
+$excel.DisplayAlerts = $false
+try {
+    $wb = $excel.Workbooks.Open("C:\\path\\file.xlsx")
+    # ... work ...
+} finally {
+    if ($wb) { $wb.Close($false) }
+    $excel.Quit()
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+}
+\`\`\`
+
+**Performance tips:**
+
+- Set \`$excel.ScreenUpdating = $false\` before bulk operations, then \`$true\` after — dramatically faster.
+- Set \`$excel.Calculation = -4135\` (\`xlCalculationManual\`) during bulk writes, then \`-4105\` (\`xlCalculationAutomatic\`) after.
+- Write data as 2D arrays to ranges instead of cell-by-cell — orders of magnitude faster.
+- Use \`.Value2\` instead of \`.Value\` — avoids slow date/currency conversion overhead.
+
+\`\`\`powershell
+# Performance wrapper
+$excel.ScreenUpdating = $false
+$excel.Calculation = -4135        # Manual calc
+$excel.EnableEvents = $false
+
+# ... bulk operations here ...
+
+$excel.Calculation = -4105        # Auto calc
+$excel.ScreenUpdating = $true
+$excel.EnableEvents = $true
+\`\`\`
+`
+  },
+
+  // ── PowerPoint PowerShell ──
+  {
+    id:          'powerpoint-powershell',
+    name:        'PowerPoint PowerShell',
+    description: 'PowerPoint automation via PowerShell COM.',
+    category:    'Productivity',
+    tags:        ['powerpoint', 'powershell', 'com', 'automation', 'slides'],
+    icon:        '📙',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Powerpoint Powershell
+description: >
+  PowerPoint automation via PowerShell COM.
+---
+
+# Powerpoint Powershell
+
+## PowerPoint Automation — PowerShell COM Guide
+
+**Source**: Drory Shohat (email, 2026-02-16)
+**Scope**: global | **Category**: tool-guide
+
+This guide covers reading and writing \`.pptx\` files using **PowerPoint COM automation** in PowerShell. Same COM pattern used for Outlook, Word, and Excel in this workspace.
+
+---
+
+## Table of Contents
+
+- [Getting Started](#getting-started)
+- [Reading Presentations](#reading-presentations)
+  - [Open a Presentation](#open-a-presentation)
+  - [List Slides](#list-slides)
+  - [Read Slide Text](#read-slide-text)
+  - [Read All Text from Every Slide](#read-all-text-from-every-slide)
+  - [Extract Slide Layout & Master Info](#extract-slide-layout--master-info)
+  - [Read Shape Details](#read-shape-details)
+  - [Read Tables](#read-tables)
+  - [Read Charts](#read-charts)
+  - [Read Images](#read-images)
+  - [Extract Hyperlinks](#extract-hyperlinks)
+  - [Read Slide Notes](#read-slide-notes)
+  - [Read Transitions & Animations](#read-transitions--animations)
+  - [Read Slide Dimensions](#read-slide-dimensions)
+- [Writing Presentations](#writing-presentations)
+  - [Create a New Presentation](#create-a-new-presentation)
+  - [Add Slides with Layouts](#add-slides-with-layouts)
+  - [Add Text to Placeholders](#add-text-to-placeholders)
+  - [Add a Text Box](#add-a-text-box)
+  - [Apply Font Formatting](#apply-font-formatting)
+  - [Add Bullet & Numbered Lists](#add-bullet--numbered-lists)
+  - [Add Hyperlinks](#add-hyperlinks)
+  - [Add a Table](#add-a-table)
+  - [Add an Image](#add-an-image)
+  - [Add Shapes (Rectangles, Circles, Arrows)](#add-shapes-rectangles-circles-arrows)
+  - [Add a Chart](#add-a-chart)
+  - [Set Shape Fill & Line](#set-shape-fill--line)
+  - [Add Slide Notes](#add-slide-notes)
+  - [Add Transitions](#add-transitions)
+  - [Set Slide Background](#set-slide-background)
+  - [Duplicate & Reorder Slides](#duplicate--reorder-slides)
+  - [Delete Slides](#delete-slides)
+  - [Save the Presentation](#save-the-presentation)
+- [Practical Recipes](#practical-recipes)
+  - [Data-Driven Slide Deck](#data-driven-slide-deck)
+  - [Template-Based Report](#template-based-report)
+  - [Clone Conventions from Existing Presentation](#clone-conventions-from-existing-presentation)
+- [Common Constants Reference](#common-constants-reference)
+- [Cleanup & Best Practices](#cleanup--best-practices)
+
+---
+
+## Getting Started
+
+\`\`\`powershell
+$ppt = New-Object -ComObject PowerPoint.Application
+$ppt.Visible = [Microsoft.Office.Core.MsoTriState]::msoTrue  # PowerPoint must be visible (COM requirement)
+# Use msoTrue (=-1) or just set to 1
+\`\`\`
+
+> **Note:** Unlike Word/Excel, PowerPoint COM generally requires \`Visible = $true\` to work properly. You can minimize the window instead.
+
+---
+
+## Reading Presentations
+
+### Open a Presentation
+
+\`\`\`powershell
+$pres = $ppt.Presentations.Open("C:\\path\\to\\file.pptx")
+\`\`\`
+
+Open as **read-only**:
+
+\`\`\`powershell
+$pres = $ppt.Presentations.Open("C:\\path\\to\\file.pptx", $true)  # 2nd param = ReadOnly
+\`\`\`
+
+Open without showing window:
+
+\`\`\`powershell
+$pres = $ppt.Presentations.Open("C:\\path\\to\\file.pptx", $false, $false, $false)
+# Params: FileName, ReadOnly, Untitled, WithWindow
+\`\`\`
+
+### List Slides
+
+\`\`\`powershell
+Write-Output "Total slides: $($pres.Slides.Count)"
+foreach ($slide in $pres.Slides) {
+    $layoutName = $slide.Layout  # Layout enum value
+    Write-Output "Slide $($slide.SlideIndex): Layout=$layoutName, Shapes=$($slide.Shapes.Count)"
+}
+\`\`\`
+
+### Read Slide Text
+
+\`\`\`powershell
+$slide = $pres.Slides.Item(1)
+foreach ($shape in $slide.Shapes) {
+    if ($shape.HasTextFrame) {
+        $text = $shape.TextFrame.TextRange.Text
+        if ($text.Trim() -ne "") {
+            Write-Output "[$($shape.Name)] $text"
+        }
+    }
+}
+\`\`\`
+
+### Read All Text from Every Slide
+
+\`\`\`powershell
+for ($s = 1; $s -le $pres.Slides.Count; $s++) {
+    $slide = $pres.Slides.Item($s)
+    Write-Output "=== Slide $s ==="
+    foreach ($shape in $slide.Shapes) {
+        if ($shape.HasTextFrame) {
+            $tf = $shape.TextFrame.TextRange
+            if ($tf.Text.Trim() -ne "") {
+                Write-Output "  [$($shape.Name)] $($tf.Text)"
+            }
+        }
+    }
+}
+\`\`\`
+
+### Extract Slide Layout & Master Info
+
+\`\`\`powershell
+foreach ($slide in $pres.Slides) {
+    [PSCustomObject]@{
+        SlideIndex = $slide.SlideIndex
+        Layout     = $slide.Layout            # Enum value
+        LayoutName = $slide.CustomLayout.Name  # e.g. "Title Slide", "Title and Content"
+        MasterName = $slide.Design.Name
+    }
+}
+\`\`\`
+
+### Read Shape Details
+
+\`\`\`powershell
+foreach ($shape in $slide.Shapes) {
+    [PSCustomObject]@{
+        Name       = $shape.Name
+        Type       = $shape.Type          # 1=AutoShape, 13=Picture, 14=Placeholder, etc.
+        Left       = $shape.Left          # Points from left edge
+        Top        = $shape.Top           # Points from top edge
+        Width      = $shape.Width
+        Height     = $shape.Height
+        HasText    = $shape.HasTextFrame
+        IsTable    = $shape.HasTable
+        IsChart    = $shape.HasChart
+        Rotation   = $shape.Rotation
+    }
+}
+\`\`\`
+
+### Read Tables
+
+\`\`\`powershell
+foreach ($shape in $slide.Shapes) {
+    if ($shape.HasTable) {
+        $table = $shape.Table
+        Write-Output "Table: $($table.Rows.Count) rows x $($table.Columns.Count) cols"
+        for ($r = 1; $r -le $table.Rows.Count; $r++) {
+            $rowData = @()
+            for ($c = 1; $c -le $table.Columns.Count; $c++) {
+                $cellText = $table.Cell($r, $c).Shape.TextFrame.TextRange.Text
+                $rowData += $cellText
+            }
+            Write-Output ($rowData -join " | ")
+        }
+    }
+}
+\`\`\`
+
+### Read Charts
+
+\`\`\`powershell
+foreach ($shape in $slide.Shapes) {
+    if ($shape.HasChart) {
+        $chart = $shape.Chart
+        [PSCustomObject]@{
+            ChartType  = $chart.ChartType
+            HasTitle   = $chart.HasTitle
+            Title      = if ($chart.HasTitle) { $chart.ChartTitle.Text } else { "N/A" }
+            HasLegend  = $chart.HasLegend
+        }
+    }
+}
+\`\`\`
+
+### Read Images
+
+\`\`\`powershell
+foreach ($shape in $slide.Shapes) {
+    if ($shape.Type -eq 13) {  # 13 = msoPicture
+        [PSCustomObject]@{
+            Name   = $shape.Name
+            Width  = $shape.Width
+            Height = $shape.Height
+            Left   = $shape.Left
+            Top    = $shape.Top
+            Alt    = $shape.AlternativeText
+        }
+    }
+}
+
+# Export an image from a slide
+$shape = $slide.Shapes.Item(3)  # Adjust index
+$shape.Export("C:\\path\\to\\exported_image.png", 2)  # 2 = ppShapeFormatPNG
+\`\`\`
+
+### Extract Hyperlinks
+
+\`\`\`powershell
+foreach ($slide in $pres.Slides) {
+    foreach ($link in $slide.Hyperlinks) {
+        [PSCustomObject]@{
+            Slide      = $slide.SlideIndex
+            Address    = $link.Address
+            SubAddress = $link.SubAddress
+            TextRange  = $link.TextToDisplay
+            Type       = $link.Type  # 1=URL, 2=SlideLink
+        }
+    }
+}
+\`\`\`
+
+### Read Slide Notes
+
+\`\`\`powershell
+foreach ($slide in $pres.Slides) {
+    $notesPage = $slide.NotesPage
+    $notesText = ""
+    foreach ($shape in $notesPage.Shapes) {
+        if ($shape.HasTextFrame) {
+            $t = $shape.TextFrame.TextRange.Text
+            if ($t.Trim() -ne "" -and $shape.PlaceholderFormat.Type -eq 2) {
+                # Type 2 = ppPlaceholderBody (notes placeholder)
+                $notesText = $t
+            }
+        }
+    }
+    if ($notesText) {
+        Write-Output "Slide $($slide.SlideIndex) Notes: $notesText"
+    }
+}
+\`\`\`
+
+### Read Transitions & Animations
+
+\`\`\`powershell
+foreach ($slide in $pres.Slides) {
+    $trans = $slide.SlideShowTransition
+    if ($trans.EntryEffect -ne 0) {
+        Write-Output "Slide $($slide.SlideIndex): Transition=$($trans.EntryEffect), Duration=$($trans.Duration)s"
+    }
+}
+
+# Animation effects
+foreach ($slide in $pres.Slides) {
+    $timeline = $slide.TimeLine
+    if ($timeline.MainSequence.Count -gt 0) {
+        Write-Output "Slide $($slide.SlideIndex): $($timeline.MainSequence.Count) animations"
+        foreach ($effect in $timeline.MainSequence) {
+            Write-Output "  Shape: $($effect.Shape.Name) | Effect: $($effect.EffectType)"
+        }
+    }
+}
+\`\`\`
+
+### Read Slide Dimensions
+
+\`\`\`powershell
+$width  = $pres.PageSetup.SlideWidth    # In points (1 inch = 72 points)
+$height = $pres.PageSetup.SlideHeight
+Write-Output "Slide size: $($width/72) x $($height/72) inches"
+Write-Output "Slide size: $width x $height points"
+\`\`\`
+
+---
+
+## Writing Presentations
+
+### Create a New Presentation
+
+\`\`\`powershell
+$ppt = New-Object -ComObject PowerPoint.Application
+$ppt.Visible = 1
+$pres = $ppt.Presentations.Add()
+\`\`\`
+
+Create from a **template**:
+
+\`\`\`powershell
+$pres = $ppt.Presentations.Open("C:\\path\\to\\template.potx")
+\`\`\`
+
+### Add Slides with Layouts
+
+\`\`\`powershell
+# Add a slide with a specific layout
+# Layout reference: see Constants section below
+$layout = $pres.SlideMaster.CustomLayouts.Item(1)  # First layout (usually Title Slide)
+$slide = $pres.Slides.AddSlide($pres.Slides.Count + 1, $layout)
+
+# Common approach: use ppLayout enum values
+$slide1 = $pres.Slides.Add($pres.Slides.Count + 1, 1)   # ppLayoutTitle
+$slide2 = $pres.Slides.Add($pres.Slides.Count + 1, 2)   # ppLayoutText (Title + Content)
+$slide3 = $pres.Slides.Add($pres.Slides.Count + 1, 12)  # ppLayoutBlank
+\`\`\`
+
+### Add Text to Placeholders
+
+\`\`\`powershell
+# Placeholders are the predefined text areas on a slide layout
+$slide = $pres.Slides.Item(1)
+
+# Title placeholder (usually index 1)
+$slide.Shapes.Placeholders.Item(1).TextFrame.TextRange.Text = "Presentation Title"
+
+# Subtitle / Body placeholder (usually index 2)
+$slide.Shapes.Placeholders.Item(2).TextFrame.TextRange.Text = "Subtitle or body text"
+\`\`\`
+
+### Add a Text Box
+
+\`\`\`powershell
+# AddTextbox(Orientation, Left, Top, Width, Height) — all in points
+$textBox = $slide.Shapes.AddTextbox(
+    1,      # msoTextOrientationHorizontal
+    100,    # Left (points)
+    200,    # Top (points)
+    400,    # Width
+    50      # Height
+)
+$textBox.TextFrame.TextRange.Text = "Custom text box content"
+$textBox.TextFrame.WordWrap = -1   # msoTrue = enable word wrap
+\`\`\`
+
+### Apply Font Formatting
+
+\`\`\`powershell
+$textRange = $slide.Shapes.Placeholders.Item(1).TextFrame.TextRange
+
+# Whole text range
+$textRange.Font.Name = "Calibri"
+$textRange.Font.Size = 28
+$textRange.Font.Bold = -1          # msoTrue
+$textRange.Font.Italic = -1
+$textRange.Font.Color.RGB = 0x4472C4  # RGB (not BGR like Word/Excel!)
+$textRange.Font.Underline = -1
+
+# Format a portion of text
+$textRange.Text = "Bold and Normal text"
+$textRange.Characters(1, 4).Font.Bold = -1    # "Bold"
+$textRange.Characters(10, 6).Font.Italic = -1  # "Normal"
+
+# Paragraph alignment
+$textRange.ParagraphFormat.Alignment = 2  # ppAlignCenter
+\`\`\`
+
+> **Important:** PowerPoint uses **RGB** for colors (not BGR like Word/Excel COM).
+
+### Add Bullet & Numbered Lists
+
+\`\`\`powershell
+$textRange = $slide.Shapes.Placeholders.Item(2).TextFrame.TextRange
+$textRange.Text = "First item\`rSecond item\`rThird item"  # Use \`r for new paragraphs
+
+# Bullet list (default for content placeholders)
+$textRange.ParagraphFormat.Bullet.Type = 1  # ppBulletUnnumbered
+
+# Numbered list
+$textRange.ParagraphFormat.Bullet.Type = 2  # ppBulletNumbered
+$textRange.ParagraphFormat.Bullet.Style = 1 # ppBulletArabicPeriod (1. 2. 3.)
+
+# Custom bullet character
+$textRange.ParagraphFormat.Bullet.Type = 1
+$textRange.ParagraphFormat.Bullet.Character = 8226  # Unicode bullet •
+
+# Indent levels (sub-bullets)
+$textRange.Paragraphs(2).IndentLevel = 2  # Sub-bullet
+$textRange.Paragraphs(3).IndentLevel = 3  # Sub-sub-bullet
+
+# Remove bullets
+$textRange.ParagraphFormat.Bullet.Type = 0  # ppBulletNone
+\`\`\`
+
+### Add Hyperlinks
+
+\`\`\`powershell
+# Hyperlink on text
+$textRange = $slide.Shapes.Placeholders.Item(2).TextFrame.TextRange
+$textRange.Text = "Visit our website"
+$slide.Hyperlinks.Add($textRange, "https://www.example.com", "", "", "")
+
+# Hyperlink on a shape
+$shape = $slide.Shapes.Item(3)
+$slide.Hyperlinks.Add($shape.TextFrame.TextRange, "https://www.example.com")
+
+# Link to another slide in the same presentation
+$textRange2 = $slide.Shapes.AddTextbox(1, 100, 400, 300, 30).TextFrame.TextRange
+$textRange2.Text = "Jump to Slide 3"
+$pres.Slides.Item(1).Hyperlinks.Add($textRange2, "", "3,1,Slide 3")
+# SubAddress format: "slideIndex,clickAction,slideTitle"
+\`\`\`
+
+### Add a Table
+
+\`\`\`powershell
+# AddTable(NumRows, NumColumns, Left, Top, Width, Height)
+$tableShape = $slide.Shapes.AddTable(4, 3, 50, 150, 600, 200)
+$table = $tableShape.Table
+
+# Populate headers
+$table.Cell(1, 1).Shape.TextFrame.TextRange.Text = "Name"
+$table.Cell(1, 2).Shape.TextFrame.TextRange.Text = "Role"
+$table.Cell(1, 3).Shape.TextFrame.TextRange.Text = "Score"
+
+# Populate data
+$table.Cell(2, 1).Shape.TextFrame.TextRange.Text = "Alice"
+$table.Cell(2, 2).Shape.TextFrame.TextRange.Text = "Engineer"
+$table.Cell(2, 3).Shape.TextFrame.TextRange.Text = "95"
+
+# Format header row
+for ($c = 1; $c -le 3; $c++) {
+    $cell = $table.Cell(1, $c)
+    $cell.Shape.TextFrame.TextRange.Font.Bold = -1
+    $cell.Shape.TextFrame.TextRange.Font.Color.RGB = 0xFFFFFF  # White
+    $cell.Shape.Fill.ForeColor.RGB = 0x4472C4                   # Blue background
+}
+
+# Set column widths
+$table.Columns.Item(1).Width = 200
+$table.Columns.Item(2).Width = 200
+$table.Columns.Item(3).Width = 200
+
+# Set row height
+$table.Rows.Item(1).Height = 40
+\`\`\`
+
+### Add an Image
+
+\`\`\`powershell
+# AddPicture(FileName, LinkToFile, SaveWithDocument, Left, Top, Width, Height)
+$pic = $slide.Shapes.AddPicture(
+    "C:\\path\\to\\image.png",
+    0,       # msoFalse — don't link to file
+    -1,      # msoTrue — save with document
+    100,     # Left
+    100,     # Top
+    400,     # Width (-1 to keep original)
+    300      # Height (-1 to keep original)
+)
+
+# Keep aspect ratio
+$pic.LockAspectRatio = -1  # msoTrue
+$pic.Width = 400            # Height adjusts automatically
+
+# Add alt text
+$pic.AlternativeText = "Description of the image"
+\`\`\`
+
+### Add Shapes (Rectangles, Circles, Arrows)
+
+\`\`\`powershell
+# AddShape(AutoShapeType, Left, Top, Width, Height)
+
+# Rectangle
+$rect = $slide.Shapes.AddShape(1, 100, 100, 200, 100)   # msoShapeRectangle
+$rect.TextFrame.TextRange.Text = "Rectangle"
+
+# Rounded Rectangle
+$rrect = $slide.Shapes.AddShape(5, 350, 100, 200, 100)  # msoShapeRoundedRectangle
+
+# Oval / Circle
+$oval = $slide.Shapes.AddShape(9, 100, 250, 100, 100)   # msoShapeOval
+
+# Right Arrow
+$arrow = $slide.Shapes.AddShape(33, 250, 270, 150, 60)  # msoShapeRightArrow
+
+# Callout
+$callout = $slide.Shapes.AddShape(105, 400, 250, 200, 100)  # msoShapeRoundedRectangularCallout
+
+# Line
+$line = $slide.Shapes.AddLine(100, 400, 500, 400)  # X1, Y1, X2, Y2
+
+# Connector (arrow line)
+$connector = $slide.Shapes.AddConnector(1, 100, 450, 500, 450)  # msoConnectorStraight
+$connector.Line.EndArrowheadStyle = 2  # msoArrowheadTriangle
+\`\`\`
+
+### Add a Chart
+
+\`\`\`powershell
+# AddChart2(ChartStyle, ChartType, Left, Top, Width, Height)
+$chartShape = $slide.Shapes.AddChart2(-1, 51, 50, 150, 600, 350)  # 51 = xlColumnClustered
+$chart = $chartShape.Chart
+
+# Edit chart data
+$chartData = $chart.ChartData
+$chartData.Activate()
+$workbook = $chartData.Workbook
+$ws = $workbook.Worksheets.Item(1)
+
+# Clear existing data
+$ws.UsedRange.Clear()
+
+# Write new data
+$ws.Range("A1").Value2 = "Category"
+$ws.Range("B1").Value2 = "Series 1"
+$ws.Range("C1").Value2 = "Series 2"
+$ws.Range("A2").Value2 = "Q1"
+$ws.Range("B2").Value2 = 100
+$ws.Range("C2").Value2 = 80
+$ws.Range("A3").Value2 = "Q2"
+$ws.Range("B3").Value2 = 120
+$ws.Range("C3").Value2 = 95
+
+# Set chart source range
+$chart.SetSourceData($ws.Range("A1:C3"))
+
+# Title
+$chart.HasTitle = $true
+$chart.ChartTitle.Text = "Quarterly Results"
+
+# Close the data editor
+$workbook.Close($true)
+
+# Legend
+$chart.HasLegend = $true
+$chart.Legend.Position = -4107  # xlBottom
+\`\`\`
+
+### Set Shape Fill & Line
+
+\`\`\`powershell
+$shape = $slide.Shapes.Item(1)
+
+# Solid fill
+$shape.Fill.Visible = -1
+$shape.Fill.ForeColor.RGB = 0x4472C4        # Blue
+$shape.Fill.Transparency = 0.2               # 20% transparent
+
+# Gradient fill
+$shape.Fill.TwoColorGradient(1, 1)           # msoGradientHorizontal, variant 1
+$shape.Fill.ForeColor.RGB = 0x4472C4
+$shape.Fill.BackColor.RGB = 0x70AD47
+
+# No fill (transparent)
+$shape.Fill.Visible = 0                      # msoFalse
+
+# Line (border)
+$shape.Line.Visible = -1
+$shape.Line.ForeColor.RGB = 0x000000         # Black
+$shape.Line.Weight = 2                        # 2 points
+$shape.Line.DashStyle = 1                     # msoLineSolid
+
+# No border
+$shape.Line.Visible = 0
+
+# Shadow
+$shape.Shadow.Visible = -1
+$shape.Shadow.Type = 21                       # msoShadow21
+$shape.Shadow.ForeColor.RGB = 0x808080
+\`\`\`
+
+### Add Slide Notes
+
+\`\`\`powershell
+$slide = $pres.Slides.Item(1)
+$slide.NotesPage.Shapes.Placeholders.Item(2).TextFrame.TextRange.Text = "Speaker notes for this slide. Remember to mention key points."
+\`\`\`
+
+### Add Transitions
+
+\`\`\`powershell
+$slide = $pres.Slides.Item(1)
+$trans = $slide.SlideShowTransition
+
+# Fade transition
+$trans.EntryEffect = 3844          # ppEffectFade
+
+# Duration
+$trans.Duration = 1.5              # Seconds
+
+# Advance automatically after 5 seconds
+$trans.AdvanceOnTime = -1          # msoTrue
+$trans.AdvanceTime = 5
+
+# Advance on click
+$trans.AdvanceOnClick = -1         # msoTrue
+
+# Apply to all slides
+foreach ($s in $pres.Slides) {
+    $s.SlideShowTransition.EntryEffect = 3844
+    $s.SlideShowTransition.Duration = 1.0
+}
+\`\`\`
+
+### Set Slide Background
+
+\`\`\`powershell
+$slide = $pres.Slides.Item(1)
+$bg = $slide.Background.Fill
+
+# Solid color background
+$bg.Visible = -1
+$bg.Solid
+$bg.ForeColor.RGB = 0x1F3864    # Dark blue
+
+# Gradient background
+$bg.TwoColorGradient(1, 1)
+$bg.ForeColor.RGB = 0x1F3864
+$bg.BackColor.RGB = 0x4472C4
+
+# Image background
+$bg.UserPicture("C:\\path\\to\\background.jpg")
+
+# Follow master slide background
+$slide.FollowMasterBackground = -1
+\`\`\`
+
+### Duplicate & Reorder Slides
+
+\`\`\`powershell
+# Duplicate a slide
+$newSlide = $pres.Slides.Item(1).Duplicate()
+
+# Move a slide to a new position
+$pres.Slides.Item(3).MoveTo(1)   # Move slide 3 to position 1
+
+# Copy slide from another presentation
+$sourcePres = $ppt.Presentations.Open("C:\\path\\to\\source.pptx", $true)
+$sourcePres.Slides.Item(2).Copy()
+$pres.Slides.Paste($pres.Slides.Count + 1)
+$sourcePres.Close()
+\`\`\`
+
+### Delete Slides
+
+\`\`\`powershell
+# Delete by index
+$pres.Slides.Item(3).Delete()
+
+# Delete last slide
+$pres.Slides.Item($pres.Slides.Count).Delete()
+\`\`\`
+
+### Save the Presentation
+
+\`\`\`powershell
+# Save as .pptx
+$savePath = "C:\\path\\to\\output.pptx"
+$pres.SaveAs($savePath, 24)   # 24 = ppSaveAsOpenXMLPresentation (.pptx)
+
+# Format constants:
+#   24 = ppSaveAsOpenXMLPresentation    (.pptx)
+#   25 = ppSaveAsOpenXMLPresentationMacroEnabled (.pptm)
+#   27 = ppSaveAsOpenXMLShow            (.ppsx — auto-play)
+#   32 = ppSaveAsPDF                    (.pdf)
+#   18 = ppSaveAsPNG                    (folder of PNGs, one per slide)
+#   17 = ppSaveAsJPG                    (folder of JPGs)
+
+# Save as PDF
+$pres.SaveAs("C:\\path\\to\\output.pdf", 32)
+
+# Export all slides as images
+$pres.SaveAs("C:\\path\\to\\slides_folder", 18)  # Creates a folder with Slide1.png, Slide2.png, etc.
+
+# Export a single slide as image
+$pres.Slides.Item(1).Export("C:\\path\\to\\slide1.png", "PNG", 1920, 1080)
+\`\`\`
+
+---
+
+## Practical Recipes
+
+### Data-Driven Slide Deck
+
+Generate slides from data (e.g., one slide per team member):
+
+\`\`\`powershell
+$ppt = New-Object -ComObject PowerPoint.Application
+$ppt.Visible = 1
+$pres = $ppt.Presentations.Add()
+
+# Title slide
+$titleSlide = $pres.Slides.Add(1, 1)  # ppLayoutTitle
+$titleSlide.Shapes.Placeholders.Item(1).TextFrame.TextRange.Text = "Team Overview"
+$titleSlide.Shapes.Placeholders.Item(2).TextFrame.TextRange.Text = "Auto-generated report — $(Get-Date -Format 'MMMM yyyy')"
+
+# Data
+$team = @(
+    @{ Name = "Alice"; Role = "Engineer"; Score = 95 },
+    @{ Name = "Bob"; Role = "Designer"; Score = 88 },
+    @{ Name = "Charlie"; Role = "Manager"; Score = 92 }
+)
+
+foreach ($member in $team) {
+    $s = $pres.Slides.Add($pres.Slides.Count + 1, 2)  # ppLayoutText
+    $s.Shapes.Placeholders.Item(1).TextFrame.TextRange.Text = $member.Name
+    $body = $s.Shapes.Placeholders.Item(2).TextFrame.TextRange
+    $body.Text = "Role: $($member.Role)\`rScore: $($member.Score)\`rStatus: $(if ($member.Score -ge 90) { 'Excellent' } else { 'Good' })"
+    $body.Font.Size = 20
+}
+
+# Summary slide with table
+$summarySlide = $pres.Slides.Add($pres.Slides.Count + 1, 12)  # ppLayoutBlank
+$tableShape = $summarySlide.Shapes.AddTable($team.Count + 1, 3, 50, 80, 600, 250)
+$table = $tableShape.Table
+
+$table.Cell(1,1).Shape.TextFrame.TextRange.Text = "Name"
+$table.Cell(1,2).Shape.TextFrame.TextRange.Text = "Role"
+$table.Cell(1,3).Shape.TextFrame.TextRange.Text = "Score"
+
+for ($i = 0; $i -lt $team.Count; $i++) {
+    $table.Cell($i+2, 1).Shape.TextFrame.TextRange.Text = $team[$i].Name
+    $table.Cell($i+2, 2).Shape.TextFrame.TextRange.Text = $team[$i].Role
+    $table.Cell($i+2, 3).Shape.TextFrame.TextRange.Text = "$($team[$i].Score)"
+}
+
+$pres.SaveAs("C:\\path\\to\\TeamOverview.pptx", 24)
+$pres.Close()
+$ppt.Quit()
+\`\`\`
+
+### Template-Based Report
+
+Fill in an existing template's placeholders:
+
+\`\`\`powershell
+$ppt = New-Object -ComObject PowerPoint.Application
+$ppt.Visible = 1
+$pres = $ppt.Presentations.Open("C:\\path\\to\\template.pptx")
+
+# Replace placeholder text
+foreach ($slide in $pres.Slides) {
+    foreach ($shape in $slide.Shapes) {
+        if ($shape.HasTextFrame) {
+            $text = $shape.TextFrame.TextRange.Text
+            $text = $text -replace '\\{DATE\\}', (Get-Date -Format 'MMMM dd, yyyy')
+            $text = $text -replace '\\{AUTHOR\\}', 'Drory Shohat'
+            $text = $text -replace '\\{PROJECT\\}', 'OfficeHelper'
+            $shape.TextFrame.TextRange.Text = $text
+        }
+    }
+}
+
+$pres.SaveAs("C:\\path\\to\\FilledReport.pptx", 24)
+$pres.Close()
+$ppt.Quit()
+\`\`\`
+
+### Clone Conventions from Existing Presentation
+
+#### Phase 1 — Analyze Source Presentation
+
+\`\`\`powershell
+$ppt = New-Object -ComObject PowerPoint.Application
+$ppt.Visible = 1
+$pres = $ppt.Presentations.Open("C:\\path\\to\\source.pptx", $true)
+
+# Slide dimensions
+Write-Output "Size: $($pres.PageSetup.SlideWidth/72) x $($pres.PageSetup.SlideHeight/72) inches"
+
+# Available layouts
+Write-Output "\`n--- Layouts ---"
+foreach ($layout in $pres.SlideMaster.CustomLayouts) {
+    Write-Output "  $($layout.Name)"
+}
+
+# Per-slide analysis
+foreach ($slide in $pres.Slides) {
+    Write-Output "\`n=== Slide $($slide.SlideIndex): $($slide.CustomLayout.Name) ==="
+    foreach ($shape in $slide.Shapes) {
+        $info = "  [$($shape.Name)] Type=$($shape.Type) Size=$($shape.Width)x$($shape.Height)"
+        if ($shape.HasTextFrame) {
+            $tf = $shape.TextFrame.TextRange
+            $info += " | Font=$($tf.Font.Name) $($tf.Font.Size)pt"
+            $info += " | Color=$($tf.Font.Color.RGB)"
+            $info += " | Bold=$($tf.Font.Bold)"
+            $info += " | Text='$($tf.Text.Substring(0, [Math]::Min(50, $tf.Text.Length)))'"
+        }
+        Write-Output $info
+    }
+}
+
+# Background analysis
+foreach ($slide in $pres.Slides) {
+    $bg = $slide.Background.Fill
+    Write-Output "Slide $($slide.SlideIndex) BG Type: $($bg.Type)"
+}
+
+$pres.Close()
+$ppt.Quit()
+\`\`\`
+
+#### Phase 2 — Recreate with Same Conventions
+
+Use extracted layout names, fonts, sizes, colors, and dimensions to build the new presentation using the writing techniques above.
+
+---
+
+## Common Constants Reference
+
+### ppSaveAsFileType
+
+| Constant                                | Value | Extension |
+|-----------------------------------------|-------|-----------|
+| \`ppSaveAsOpenXMLPresentation\`           | 24    | \`.pptx\`   |
+| \`ppSaveAsOpenXMLPresentationMacroEnabled\` | 25  | \`.pptm\`   |
+| \`ppSaveAsOpenXMLShow\`                   | 27    | \`.ppsx\`   |
+| \`ppSaveAsPDF\`                           | 32    | \`.pdf\`    |
+| \`ppSaveAsPNG\`                           | 18    | \`.png\`    |
+| \`ppSaveAsJPG\`                           | 17    | \`.jpg\`    |
+| \`ppSaveAsPresentation\`                  | 1     | \`.ppt\`    |
+
+### ppSlideLayout
+
+| Layout                   | Value |
+|--------------------------|-------|
+| \`ppLayoutTitle\`          | 1     |
+| \`ppLayoutText\`           | 2     |
+| \`ppLayoutTwoColumnText\`  | 3     |
+| \`ppLayoutTable\`          | 4     |
+| \`ppLayoutTextAndChart\`   | 5     |
+| \`ppLayoutChartAndText\`   | 6     |
+| \`ppLayoutTitleOnly\`      | 11    |
+| \`ppLayoutBlank\`          | 12    |
+| \`ppLayoutContentWithCaption\` | 13|
+| \`ppLayoutPictureWithCaption\` | 14|
+| \`ppLayoutTwoObjects\`     | 29    |
+| \`ppLayoutSectionHeader\`  | 37    |
+
+### ppParagraphAlignment
+
+| Alignment | Value |
+|-----------|-------|
+| Left      | 1     |
+| Center    | 2     |
+| Right     | 3     |
+| Justify   | 4     |
+| Distribute| 5     |
+
+### msoShapeType (Common)
+
+| Shape Type          | Value |
+|---------------------|-------|
+| AutoShape           | 1     |
+| Callout             | 2     |
+| Chart               | 3     |
+| Comment             | 4     |
+| Freeform            | 5     |
+| Group               | 6     |
+| EmbeddedOLE         | 7     |
+| Line                | 9     |
+| Picture             | 13    |
+| Placeholder         | 14    |
+| Table               | 19    |
+| TextBox             | 17    |
+
+### msoAutoShapeType (Common)
+
+| Shape                     | Value |
+|---------------------------|-------|
+| Rectangle                 | 1     |
+| Parallelogram             | 2     |
+| Diamond                   | 4     |
+| Rounded Rectangle         | 5     |
+| Oval                      | 9     |
+| Triangle                  | 7     |
+| Right Arrow               | 33    |
+| Left Arrow                | 34    |
+| Up Arrow                  | 35    |
+| Down Arrow                | 36    |
+| Pentagon                  | 51    |
+| Hexagon                   | 10    |
+| Star 5-Point              | 12    |
+| Heart                     | 21    |
+| Lightning Bolt            | 22    |
+| Rounded Rectangular Callout| 105  |
+
+### msoTriState
+
+| Value | Constant   | Meaning |
+|-------|------------|---------|
+| -1    | \`msoTrue\`  | True    |
+| 0     | \`msoFalse\` | False   |
+
+### ppEntryEffect (Transitions — Common)
+
+| Transition      | Value |
+|-----------------|-------|
+| None            | 0     |
+| Fade            | 3844  |
+| Push            | 3845  |
+| Wipe            | 3847  |
+| Split           | 3848  |
+| Cut             | 3849  |
+| Cover           | 3850  |
+| Dissolve        | 3851  |
+
+### Common Colors (RGB — PowerPoint uses RGB, not BGR!)
+
+| Color        | Value      |
+|--------------|------------|
+| Black        | \`0x000000\` |
+| White        | \`0xFFFFFF\` |
+| Red          | \`0xFF0000\` |
+| Green        | \`0x00FF00\` |
+| Blue         | \`0x0000FF\` |
+| Yellow       | \`0xFFFF00\` |
+| Orange       | \`0xFFA500\` |
+| Brand Blue   | \`0x0071C5\` |
+| Dark Blue    | \`0x1F3864\` |
+| Accent Blue  | \`0x4472C4\` |
+
+---
+
+## Cleanup & Best Practices
+
+**Always close and quit** to avoid orphaned processes:
+
+\`\`\`powershell
+$pres.Close()
+$ppt.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($ppt) | Out-Null
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+\`\`\`
+
+**Kill orphaned processes** (if needed):
+
+\`\`\`powershell
+Get-Process POWERPNT -ErrorAction SilentlyContinue | Stop-Process -Force
+\`\`\`
+
+**Use try/finally for safe cleanup:**
+
+\`\`\`powershell
+$ppt = New-Object -ComObject PowerPoint.Application
+$ppt.Visible = 1
+try {
+    $pres = $ppt.Presentations.Open("C:\\path\\file.pptx")
+    # ... work ...
+} finally {
+    if ($pres) { $pres.Close() }
+    $ppt.Quit()
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($ppt) | Out-Null
+}
+\`\`\`
+
+**Tips:**
+- PowerPoint COM requires \`Visible = $true\` (unlike Word/Excel). Minimize the window if needed: \`$ppt.WindowState = 2\` (ppWindowMinimized).
+- Use **points** for positioning (72 points = 1 inch, 28.35 points = 1 cm).
+- PowerPoint uses **RGB** colors, while Word/Excel COM use **BGR** — don't mix them up.
+- When building many slides, consider creating a template \`.potx\` first with your layouts, then programmatically filling in content. This is much easier than styling from scratch.
+- Export slides as images for thumbnails: \`$slide.Export("path.png", "PNG", 1920, 1080)\`.
+`
+  },
+
+  // ── Word PowerShell ──
+  {
+    id:          'word-powershell',
+    name:        'Word PowerShell',
+    description: 'Word document automation via PowerShell COM.',
+    category:    'Productivity',
+    tags:        ['word', 'powershell', 'com', 'automation', 'documents'],
+    icon:        '📘',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Word Powershell
+description: >
+  Word document automation via PowerShell COM.
+---
+
+# Word Powershell
+
+## Word Document Automation — PowerShell COM Guide
+
+**Source**: Drory Shohat (email, 2026-02-16)
+**Scope**: global | **Category**: tool-guide
+
+This guide covers reading and writing \`.docx\` files using **Word COM automation** in PowerShell. It follows the same COM pattern used for Outlook in this workspace.
+
+---
+
+## Table of Contents
+
+- [Getting Started](#getting-started)
+- [Reading Documents](#reading-documents)
+  - [Open a Document](#open-a-document)
+  - [Read Full Text](#read-full-text)
+  - [Read Paragraph by Paragraph](#read-paragraph-by-paragraph)
+  - [Extract Style & Formatting Info](#extract-style--formatting-info)
+  - [Extract Hyperlinks](#extract-hyperlinks)
+  - [Extract Tables](#extract-tables)
+  - [Detect Table of Contents](#detect-table-of-contents)
+  - [Extract Headers & Footers](#extract-headers--footers)
+  - [Extract Images (Inline Shapes)](#extract-images-inline-shapes)
+- [Writing Documents](#writing-documents)
+  - [Create a New Document](#create-a-new-document)
+  - [Add Text with Styles](#add-text-with-styles)
+  - [Apply Font Formatting](#apply-font-formatting)
+  - [Add Bullet & Numbered Lists](#add-bullet--numbered-lists)
+  - [Add a Hyperlink](#add-a-hyperlink)
+  - [Add a Table](#add-a-table)
+  - [Insert a Table of Contents](#insert-a-table-of-contents)
+  - [Add Headers & Footers](#add-headers--footers)
+  - [Insert an Image](#insert-an-image)
+  - [Insert a Page Break](#insert-a-page-break)
+  - [Save the Document](#save-the-document)
+- [Cloning Conventions from an Existing Document](#cloning-conventions-from-an-existing-document)
+  - [Phase 1 — Analyze Source Document](#phase-1--analyze-source-document)
+  - [Phase 2 — Recreate with Same Conventions](#phase-2--recreate-with-same-conventions)
+- [Common Constants Reference](#common-constants-reference)
+- [Cleanup & Best Practices](#cleanup--best-practices)
+
+---
+
+## Getting Started
+
+All operations begin by creating a Word COM application instance:
+
+\`\`\`powershell
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false   # Set to $true if you want to see Word open
+\`\`\`
+
+> **Important:** Always close documents and quit Word when done to avoid orphaned \`WINWORD.EXE\` processes (see [Cleanup & Best Practices](#cleanup--best-practices)).
+
+---
+
+## Reading Documents
+
+### Open a Document
+
+\`\`\`powershell
+$docPath = "C:\\path\\to\\document.docx"
+$doc = $word.Documents.Open($docPath)
+\`\`\`
+
+Open as **read-only**:
+
+\`\`\`powershell
+$doc = $word.Documents.Open($docPath, $false, $true)  # 3rd param = ReadOnly
+\`\`\`
+
+### Read Full Text
+
+\`\`\`powershell
+$fullText = $doc.Content.Text
+Write-Output $fullText
+\`\`\`
+
+### Read Paragraph by Paragraph
+
+\`\`\`powershell
+foreach ($para in $doc.Paragraphs) {
+    $text  = $para.Range.Text.TrimEnd("\`r")
+    $style = $para.Style.NameLocal
+
+    if ($text.Trim() -ne "") {
+        Write-Output "[$style] $text"
+    }
+}
+\`\`\`
+
+### Extract Style & Formatting Info
+
+Get a full structural blueprint of every paragraph:
+
+\`\`\`powershell
+$blueprint = foreach ($para in $doc.Paragraphs) {
+    [PSCustomObject]@{
+        Style       = $para.Style.NameLocal          # e.g. "Heading 1", "Normal"
+        FontName    = $para.Range.Font.Name           # e.g. "Calibri"
+        FontSize    = $para.Range.Font.Size           # e.g. 11
+        Bold        = [bool]$para.Range.Font.Bold
+        Italic      = [bool]$para.Range.Font.Italic
+        Underline   = $para.Range.Font.Underline      # 0 = none, 1 = single
+        Color       = $para.Range.Font.Color
+        Alignment   = $para.Alignment                 # 0=Left, 1=Center, 2=Right, 3=Justify
+        SpaceBefore = $para.SpaceBefore
+        SpaceAfter  = $para.SpaceAfter
+        LineSpacing = $para.LineSpacing
+        ListType    = $para.Range.ListFormat.ListType  # 0=None, 1=Bullet, 2=Number
+        IndentLevel = $para.Range.ListFormat.ListLevelNumber
+        Text        = $para.Range.Text.Substring(0, [Math]::Min(100, $para.Range.Text.Length))
+    }
+}
+
+$blueprint | Format-Table -AutoSize
+\`\`\`
+
+### Extract Hyperlinks
+
+\`\`\`powershell
+foreach ($link in $doc.Hyperlinks) {
+    [PSCustomObject]@{
+        DisplayText = $link.TextToDisplay
+        URL         = $link.Address
+        SubAddress  = $link.SubAddress    # For internal bookmarks / anchors
+    }
+}
+\`\`\`
+
+### Extract Tables
+
+\`\`\`powershell
+for ($t = 1; $t -le $doc.Tables.Count; $t++) {
+    $table = $doc.Tables.Item($t)
+    Write-Output "=== Table $t (Rows: $($table.Rows.Count), Cols: $($table.Columns.Count)) ==="
+
+    for ($r = 1; $r -le $table.Rows.Count; $r++) {
+        $rowData = @()
+        for ($c = 1; $c -le $table.Columns.Count; $c++) {
+            $cellText = $table.Cell($r, $c).Range.Text
+            # Word cell text ends with special chars — trim them
+            $cellText = $cellText -replace '[\\r\\n\\a\\x07]', ''
+            $rowData += $cellText
+        }
+        Write-Output ($rowData -join " | ")
+    }
+}
+\`\`\`
+
+### Detect Table of Contents
+
+\`\`\`powershell
+$tocCount = $doc.TablesOfContents.Count
+if ($tocCount -gt 0) {
+    Write-Output "Document has $tocCount Table(s) of Contents"
+    foreach ($toc in $doc.TablesOfContents) {
+        Write-Output "  Heading levels: 1 to $($toc.LowerHeadingLevel)"
+        Write-Output "  Uses hyperlinks: $($toc.UseHyperlinks)"
+    }
+} else {
+    Write-Output "No Table of Contents found"
+}
+\`\`\`
+
+### Extract Headers & Footers
+
+\`\`\`powershell
+foreach ($section in $doc.Sections) {
+    # Primary header (odd pages / all pages)
+    $header = $section.Headers.Item(1).Range.Text  # 1 = wdHeaderFooterPrimary
+    $footer = $section.Footers.Item(1).Range.Text
+
+    Write-Output "Header: $header"
+    Write-Output "Footer: $footer"
+}
+\`\`\`
+
+Header/Footer index values:
+| Index | Constant                     | Meaning            |
+|-------|------------------------------|--------------------|
+| 1     | \`wdHeaderFooterPrimary\`      | All / odd pages    |
+| 2     | \`wdHeaderFooterFirstPage\`    | First page only    |
+| 3     | \`wdHeaderFooterEvenPages\`    | Even pages         |
+
+### Extract Images (Inline Shapes)
+
+\`\`\`powershell
+Write-Output "Inline shapes: $($doc.InlineShapes.Count)"
+foreach ($shape in $doc.InlineShapes) {
+    [PSCustomObject]@{
+        Type   = $shape.Type     # 3 = wdInlineShapePicture
+        Width  = $shape.Width
+        Height = $shape.Height
+        Alt    = $shape.AlternativeText
+    }
+}
+\`\`\`
+
+---
+
+## Writing Documents
+
+### Create a New Document
+
+\`\`\`powershell
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false
+$doc = $word.Documents.Add()
+\`\`\`
+
+Create from a **template**:
+
+\`\`\`powershell
+$doc = $word.Documents.Add("C:\\path\\to\\template.dotx")
+\`\`\`
+
+### Add Text with Styles
+
+\`\`\`powershell
+# Helper function: append a styled paragraph
+function Add-WordParagraph {
+    param(
+        [object]$Doc,
+        [string]$Text,
+        [string]$Style = "Normal"
+    )
+    $para = $Doc.Content.Paragraphs.Add()
+    $para.Range.Text = $Text
+    $para.Style = $Style
+    $para.Range.InsertParagraphAfter()
+}
+
+# Usage
+Add-WordParagraph -Doc $doc -Text "Main Title"      -Style "Title"
+Add-WordParagraph -Doc $doc -Text "Chapter One"      -Style "Heading 1"
+Add-WordParagraph -Doc $doc -Text "Section A"        -Style "Heading 2"
+Add-WordParagraph -Doc $doc -Text "Subsection i"     -Style "Heading 3"
+Add-WordParagraph -Doc $doc -Text "This is body text." -Style "Normal"
+\`\`\`
+
+### Apply Font Formatting
+
+\`\`\`powershell
+$range = $doc.Content.Paragraphs.Last.Range
+$range.Text = "Formatted text example"
+$range.Font.Name      = "Calibri"
+$range.Font.Size      = 12
+$range.Font.Bold      = $true
+$range.Font.Italic    = $true
+$range.Font.Underline = 1          # 1 = wdUnderlineSingle
+$range.Font.Color     = 0xFF0000   # Blue (BGR format) — or use wdColor constants
+$range.ParagraphFormat.Alignment = 1  # Center
+$range.InsertParagraphAfter()
+\`\`\`
+
+**Common wdColor values (BGR, not RGB):**
+
+| Color  | Value        |
+|--------|--------------|
+| Black  | \`0x000000\`   |
+| Red    | \`0x0000FF\`   |
+| Green  | \`0x00FF00\`   |
+| Blue   | \`0xFF0000\`   |
+| White  | \`0xFFFFFF\`   |
+
+### Add Bullet & Numbered Lists
+
+\`\`\`powershell
+# Bullet list
+$items = @("First item", "Second item", "Third item")
+foreach ($item in $items) {
+    $para = $doc.Content.Paragraphs.Add()
+    $para.Range.Text = $item
+    $para.Style = "List Bullet"
+    $para.Range.InsertParagraphAfter()
+}
+
+# Numbered list
+foreach ($item in $items) {
+    $para = $doc.Content.Paragraphs.Add()
+    $para.Range.Text = $item
+    $para.Style = "List Number"
+    $para.Range.InsertParagraphAfter()
+}
+\`\`\`
+
+### Add a Hyperlink
+
+\`\`\`powershell
+$para = $doc.Content.Paragraphs.Add()
+$para.Range.Text = ""  # Placeholder — hyperlink replaces it
+$doc.Hyperlinks.Add(
+    $para.Range,                    # Anchor range
+    "https://www.example.com",      # URL
+    "",                              # SubAddress (for bookmarks)
+    "Click to visit Example",       # ScreenTip
+    "Visit Example.com"             # DisplayText
+)
+$para.Range.InsertParagraphAfter()
+\`\`\`
+
+**Internal bookmark link (for TOC-like navigation):**
+
+\`\`\`powershell
+# Create a bookmark at a heading
+$headingRange = $doc.Content.Paragraphs.Item(3).Range
+$doc.Bookmarks.Add("Section_A", $headingRange)
+
+# Link to it from elsewhere
+$linkRange = $doc.Content.Paragraphs.Last.Range
+$doc.Hyperlinks.Add($linkRange, "", "Section_A", "", "Jump to Section A")
+\`\`\`
+
+### Add a Table
+
+\`\`\`powershell
+$rows = 4
+$cols = 3
+$range = $doc.Content.Paragraphs.Last.Range
+$table = $doc.Tables.Add($range, $rows, $cols)
+
+# Style the table
+$table.Style = "Grid Table 4 - Accent 1"   # Built-in table style
+$table.ApplyStyleHeadingRows = $true
+
+# Populate headers
+$table.Cell(1,1).Range.Text = "Name"
+$table.Cell(1,2).Range.Text = "Role"
+$table.Cell(1,3).Range.Text = "Email"
+
+# Populate data
+$table.Cell(2,1).Range.Text = "Alice"
+$table.Cell(2,2).Range.Text = "Engineer"
+$table.Cell(2,3).Range.Text = "alice@example.com"
+
+# Bold the header row
+$table.Rows.Item(1).Range.Font.Bold = $true
+\`\`\`
+
+### Insert a Table of Contents
+
+The TOC is auto-generated from Heading styles in the document:
+
+\`\`\`powershell
+# Insert TOC at the beginning of the document
+$tocRange = $doc.Range(0, 0)
+$doc.TablesOfContents.Add(
+    $tocRange,
+    $true,          # UseHeadingStyles
+    1,              # UpperHeadingLevel (Heading 1)
+    3,              # LowerHeadingLevel (Heading 3)
+    $false,         # UseFields
+    $null,          # TableID
+    $true,          # RightAlignPageNumbers
+    $true,          # IncludePageNumbers
+    "",             # AddedStyles
+    $true           # UseHyperlinks (clickable in PDF/Word)
+)
+
+# Update the TOC after adding content
+$doc.TablesOfContents.Item(1).Update()
+\`\`\`
+
+### Add Headers & Footers
+
+\`\`\`powershell
+$section = $doc.Sections.Item(1)
+
+# Primary header
+$header = $section.Headers.Item(1)  # wdHeaderFooterPrimary
+$header.Range.Text = "CONFIDENTIAL — Example Corp"
+$header.Range.Font.Size = 9
+$header.Range.Font.Color = 0x808080  # Gray
+$header.Range.ParagraphFormat.Alignment = 1  # Center
+
+# Primary footer with page number
+$footer = $section.Footers.Item(1)
+$footer.Range.Text = ""
+$footer.Range.Fields.Add($footer.Range, -1, "PAGE", $false)  # Page number field
+$footer.Range.ParagraphFormat.Alignment = 1  # Center
+\`\`\`
+
+### Insert an Image
+
+\`\`\`powershell
+$range = $doc.Content.Paragraphs.Last.Range
+$img = $doc.InlineShapes.AddPicture(
+    "C:\\path\\to\\image.png",
+    $false,   # LinkToFile
+    $true,    # SaveWithDocument
+    $range
+)
+
+# Optionally resize
+$img.Width  = 300
+$img.Height = 200
+$img.AlternativeText = "Description of the image"
+\`\`\`
+
+### Insert a Page Break
+
+\`\`\`powershell
+$range = $doc.Content.Paragraphs.Last.Range
+$range.InsertBreak(7)  # 7 = wdPageBreak
+\`\`\`
+
+### Save the Document
+
+\`\`\`powershell
+# Save as .docx (default format)
+$savePath = "C:\\path\\to\\output.docx"
+$doc.SaveAs([ref]$savePath, [ref]16)  # 16 = wdFormatDocumentDefault (.docx)
+
+# Other format constants:
+#   0  = wdFormatDocument      (.doc, legacy)
+#   16 = wdFormatDocumentDefault (.docx)
+#   17 = wdFormatPDF           (.pdf)
+#   6  = wdFormatRTF           (.rtf)
+#   2  = wdFormatText          (.txt)
+\`\`\`
+
+**Save as PDF:**
+
+\`\`\`powershell
+$pdfPath = "C:\\path\\to\\output.pdf"
+$doc.SaveAs([ref]$pdfPath, [ref]17)  # 17 = wdFormatPDF
+\`\`\`
+
+---
+
+## Cloning Conventions from an Existing Document
+
+This two-phase approach lets Copilot analyze an existing document's formatting conventions and replicate them in a new document.
+
+### Phase 1 — Analyze Source Document
+
+Run this to extract the full blueprint:
+
+\`\`\`powershell
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false
+$doc = $word.Documents.Open("C:\\path\\to\\source.docx")
+
+# --- Document-level settings ---
+$pageSetup = $doc.PageSetup
+$docInfo = [PSCustomObject]@{
+    PaperSize     = $pageSetup.PaperSize
+    Orientation   = $pageSetup.Orientation    # 0=Portrait, 1=Landscape
+    TopMargin     = $pageSetup.TopMargin
+    BottomMargin  = $pageSetup.BottomMargin
+    LeftMargin    = $pageSetup.LeftMargin
+    RightMargin   = $pageSetup.RightMargin
+    HasTOC        = $doc.TablesOfContents.Count -gt 0
+    TableCount    = $doc.Tables.Count
+    HyperlinkCount= $doc.Hyperlinks.Count
+    ImageCount    = $doc.InlineShapes.Count
+    SectionCount  = $doc.Sections.Count
+}
+$docInfo | Format-List
+
+# --- Paragraph styles used ---
+$stylesUsed = $doc.Paragraphs | ForEach-Object {
+    [PSCustomObject]@{
+        Style     = $_.Style.NameLocal
+        FontName  = $_.Range.Font.Name
+        FontSize  = $_.Range.Font.Size
+        Bold      = [bool]$_.Range.Font.Bold
+        Alignment = $_.Alignment
+    }
+} | Sort-Object Style -Unique
+$stylesUsed | Format-Table
+
+# --- Hyperlinks ---
+$doc.Hyperlinks | ForEach-Object {
+    [PSCustomObject]@{
+        Display = $_.TextToDisplay
+        URL     = $_.Address
+        Sub     = $_.SubAddress
+    }
+} | Format-Table
+
+# --- TOC settings ---
+if ($doc.TablesOfContents.Count -gt 0) {
+    $toc = $doc.TablesOfContents.Item(1)
+    [PSCustomObject]@{
+        UpperLevel = $toc.UpperHeadingLevel
+        LowerLevel = $toc.LowerHeadingLevel
+        Hyperlinks = $toc.UseHyperlinks
+        PageNumbers= $toc.IncludePageNumbers
+    } | Format-List
+}
+
+# --- Headers / Footers ---
+foreach ($sec in $doc.Sections) {
+    Write-Output "Header: $($sec.Headers.Item(1).Range.Text)"
+    Write-Output "Footer: $($sec.Footers.Item(1).Range.Text)"
+}
+
+$doc.Close($false)
+$word.Quit()
+\`\`\`
+
+### Phase 2 — Recreate with Same Conventions
+
+Using the extracted info, build the new document with matching settings:
+
+\`\`\`powershell
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false
+$doc = $word.Documents.Add()
+
+# Apply page setup from source
+$doc.PageSetup.TopMargin    = $sourceTopMargin
+$doc.PageSetup.BottomMargin = $sourceBottomMargin
+$doc.PageSetup.LeftMargin   = $sourceLeftMargin
+$doc.PageSetup.RightMargin  = $sourceRightMargin
+$doc.PageSetup.Orientation  = $sourceOrientation
+
+# Add content using same heading styles, fonts, alignment, TOC, links, etc.
+# ... (use the Add-WordParagraph helper and other techniques above)
+
+# Insert TOC with same settings as source
+$tocRange = $doc.Range(0, 0)
+$doc.TablesOfContents.Add($tocRange, $true, 1, 3, $false, $null, $true, $true, "", $true)
+
+# Update TOC
+$doc.TablesOfContents.Item(1).Update()
+
+# Save
+$savePath = "C:\\path\\to\\new_document.docx"
+$doc.SaveAs([ref]$savePath, [ref]16)
+$doc.Close()
+$word.Quit()
+\`\`\`
+
+---
+
+## Common Constants Reference
+
+### wdSaveFormat
+
+| Constant                  | Value | Extension |
+|---------------------------|-------|-----------|
+| \`wdFormatDocument\`        | 0     | \`.doc\`    |
+| \`wdFormatText\`            | 2     | \`.txt\`    |
+| \`wdFormatRTF\`             | 6     | \`.rtf\`    |
+| \`wdFormatDocumentDefault\` | 16    | \`.docx\`   |
+| \`wdFormatPDF\`             | 17    | \`.pdf\`    |
+
+### wdBuiltInStyle (commonly used)
+
+| Style Name      | Constant Value |
+|-----------------|----------------|
+| \`Normal\`        | -1             |
+| \`Heading 1\`     | -2             |
+| \`Heading 2\`     | -3             |
+| \`Heading 3\`     | -4             |
+| \`Title\`         | -63            |
+| \`Subtitle\`      | -75            |
+| \`List Bullet\`   | -49            |
+| \`List Number\`   | -50            |
+| \`TOC 1\`         | -20            |
+| \`TOC 2\`         | -21            |
+| \`TOC 3\`         | -22            |
+
+### wdParagraphAlignment
+
+| Alignment | Value |
+|-----------|-------|
+| Left      | 0     |
+| Center    | 1     |
+| Right     | 2     |
+| Justify   | 3     |
+
+### wdBreakType
+
+| Break        | Value |
+|--------------|-------|
+| Page         | 7     |
+| Column       | 8     |
+| Section Next | 2     |
+| Line         | 6     |
+
+### wdUnderline
+
+| Style     | Value |
+|-----------|-------|
+| None      | 0     |
+| Single    | 1     |
+| Double    | 3     |
+| Dotted    | 4     |
+| Wavy      | 11    |
+
+---
+
+## Cleanup & Best Practices
+
+**Always close and quit** to avoid orphaned Word processes:
+
+\`\`\`powershell
+$doc.Close($false)   # $false = don't save changes (or $true to save)
+$word.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+\`\`\`
+
+**Kill orphaned processes** (if needed):
+
+\`\`\`powershell
+Get-Process WINWORD -ErrorAction SilentlyContinue | Stop-Process -Force
+\`\`\`
+
+**Tips:**
+- Set \`$word.Visible = $true\` during development to see what's happening.
+- Use \`$word.DisplayAlerts = 0\` to suppress save/overwrite prompts.
+- Wrap operations in \`try/finally\` to ensure cleanup runs even on errors:
+
+\`\`\`powershell
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false
+try {
+    $doc = $word.Documents.Open("C:\\path\\file.docx")
+    # ... work ...
+} finally {
+    if ($doc) { $doc.Close($false) }
+    $word.Quit()
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
+}
+\`\`\`
+`
+  },
+
+  // ── Microsoft 365 Graph MCP ──
+  {
+    id:          'm365-graph-mcp',
+    name:        'Microsoft 365 Graph MCP',
+    description: 'Microsoft 365 integration via the M365 Graph MCP server. EMAIL IS DISABLED. Do NOT use this skill for email operations (no send, no draft, no reply, no forward, no delete, no mark-read). For ALL email tasks, use the outlook-powershell skill instead (Outlook COM with $mail.Display()). This skill may still be used for Calendar read, Teams chats, OneNote, SharePoint, and OneDrive operations. DO NOT USE FOR: any email operation whatsoever, creating calendar events, modifying SharePoint site permissions, admin operations.',
+    category:    'Productivity',
+    tags:        ['microsoft-365', 'graph', 'mcp', 'teams', 'sharepoint', 'onedrive'],
+    icon:        '☁️',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: M365 Graph MCP
+description: >
+  Microsoft 365 integration via the M365 Graph MCP server. EMAIL IS DISABLED.
+  Do NOT use this skill for email operations (no send, no draft, no reply, no
+  forward, no delete, no mark-read). For ALL email tasks, use the
+  outlook-powershell skill instead (Outlook COM with $mail.Display()).
+  This skill may still be used for Calendar read, Teams chats, OneNote,
+  SharePoint, and OneDrive operations.
+  DO NOT USE FOR: any email operation whatsoever, creating calendar events,
+  modifying SharePoint site permissions, admin operations.
+---
+
+# M365 Graph MCP Server
+
+## Overview
+The M365 Graph MCP server gives Copilot **direct access to Microsoft 365** via the Microsoft Graph API. It runs as a local stdio MCP server and is configured globally in VS Code — available in every workspace.
+
+## Configuration
+- **Executable:** \`%USERPROFILE%/.copilot/bin/m365-graph-mcp/m365-graph-mcp.exe\`
+- **Config file:** \`%APPDATA%\\Code\\User\\mcp.json\`
+- **Auth:** Interactive browser OAuth via MSAL (Microsoft Graph PowerShell client ID). Tokens are cached locally after first login.
+- **Source repo:** \`%USERPROFILE%\\.copilot\\example-m365-graph-agent\\m365GraphAgentExample\\\`
+
+## Available Tools (37 total)
+
+### Email (12 tools)
+| Tool | Purpose |
+|------|---------|
+| \`email_search\` | Search emails by query string |
+| \`email_get\` | Get a specific email by ID |
+| \`email_send\` | Send a new email |
+| \`email_reply\` | Reply to an email |
+| \`email_forward\` | Forward an email |
+| \`email_create_draft\` | Create a draft email |
+| \`email_send_draft\` | Send an existing draft |
+| \`email_flag\` | Flag/unflag an email |
+| \`email_move\` | Move email to a folder |
+| \`email_delete\` | Delete an email |
+| \`email_mark_read\` | Mark email as read/unread |
+| \`email_list_folders\` | List mail folders |
+
+### Calendar (4 tools)
+| Tool | Purpose |
+|------|---------|
+| \`calendar_get_events\` | Get events for a date range |
+| \`calendar_get_event\` | Get a specific event by ID |
+| \`calendar_list_calendars\` | List all calendars |
+| \`calendar_search\` | Search calendar events |
+
+> **Note:** Calendar is **read-only**. To create meetings/events, use the \`outlook-powershell\` skill with Outlook COM: \`$outlook.CreateItem(1)\` (AppointmentItem).
+
+### Teams (6 tools)
+| Tool | Purpose |
+|------|---------|
+| \`teams_list_chats\` | List recent chats (max 50) |
+| \`teams_get_chat\` | Get chat details + members |
+| \`teams_get_messages\` | Get messages from a chat (max 50) |
+| \`teams_get_message\` | Get a specific message |
+| \`teams_search_messages\` | Search messages across all chats |
+| \`teams_send_message\` | Send a message to a chat |
+
+### OneNote (6 tools)
+| Tool | Purpose |
+|------|---------|
+| \`onenote_list_notebooks\` | List all notebooks |
+| \`onenote_list_sections\` | List sections in a notebook |
+| \`onenote_list_all_sections\` | List all sections across notebooks |
+| \`onenote_list_pages\` | List pages in a section |
+| \`onenote_get_page\` | Get page content |
+| \`onenote_search_pages\` | Search across all pages |
+
+### SharePoint (7 tools)
+| Tool | Purpose |
+|------|---------|
+| \`sharepoint_list_sites\` | List accessible SharePoint sites |
+| \`sharepoint_list_drives\` | List document libraries on a site |
+| \`sharepoint_list_items\` | List items in a drive/folder |
+| \`sharepoint_search\` | Search across SharePoint |
+| \`sharepoint_upload_file\` | Upload a file to SharePoint |
+| \`sharepoint_download_file\` | Download a file from SharePoint |
+| \`sharepoint_delete_file\` | Delete a file from SharePoint |
+
+### OneDrive (2 tools)
+| Tool | Purpose |
+|------|---------|
+| \`onedrive_list_items\` | List files/folders in OneDrive |
+| \`onedrive_search\` | Search OneDrive files |
+
+### User (2 tools)
+| Tool | Purpose |
+|------|---------|
+| \`user_get\` | Get current user profile |
+| \`user_search\` | Search for users by name/email |
+
+## Common Workflows
+
+### Email Triage
+\`\`\`
+1. email_search query="is:unread" → get unread emails
+2. Identify action items by sender and subject
+3. email_mark_read on processed emails
+\`\`\`
+
+### Find a Teams Conversation
+\`\`\`
+1. teams_search_messages query="keyword" → search by content
+2. If not found: teams_list_chats → browse chats
+3. teams_get_chat chatId="..." → see members
+4. teams_get_messages chatId="..." top=50 → get messages
+\`\`\`
+
+### Download a Meeting Recording
+\`\`\`
+1. teams_list_chats → find meeting chat
+2. teams_get_messages → find message with recording link
+3. sharepoint_download_file → download the MP4
+\`\`\`
+
+### Create a Meeting (combo with outlook-powershell)
+\`\`\`
+1. calendar_get_events → find free slots
+2. user_search → get attendee email
+3. Use Outlook COM: $outlook.CreateItem(1) → create appointment
+   $appt.Subject = "..."; $appt.Start = "..."; $appt.Recipients.Add("email")
+   $appt.Display()  # NEVER .Save() or .Send() without review
+\`\`\`
+
+### Send Authenticated Email (combo with outlook-powershell)
+\`\`\`
+# For rich emails that need review before sending, prefer Outlook COM:
+$outlook = New-Object -ComObject Outlook.Application
+$mail = $outlook.CreateItem(0)
+$mail.To = "recipient@example.com"
+$mail.Subject = "..."
+$mail.HTMLBody = "..."
+$mail.Display()  # User reviews and sends
+\`\`\`
+
+## Known Limitations
+- **Calendar:** Read-only (no create/update/delete events)
+- **Teams messages:** Max 50 per request, no pagination cursor
+- **Teams chats:** Max 50 per list call
+- **SharePoint sites:** May return empty if tenant restricts Sites.Read.All
+- **OneDrive:** Personal OneDrive works; shared drives depend on permissions
+- **Auth:** First use requires interactive browser login; tokens cache after that
+- **Email send:** Works but prefer Outlook COM + \`.Display()\` for review safety
+
+## MANDATORY RULES
+1. **NEVER auto-send emails** — always use \`$mail.Display()\` for user review
+2. **NEVER delete emails/files** without explicit user confirmation
+3. **NEVER send Teams messages** without user approval
+4. For calendar event creation, use the \`outlook-powershell\` skill (COM), not Graph
+`
+  },
+
+  // ── WhatsApp API Messaging ──
+  {
+    id:          'whatsapp-api-messaging',
+    name:        'WhatsApp API Messaging',
+    description: 'WhatsApp API integration via whatsapp-web.js.',
+    category:    'API',
+    tags:        ['whatsapp', 'api', 'node', 'messaging', 'automation', 'javascript'],
+    icon:        '💬',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: Whatsapp Api Messaging
+description: >
+  WhatsApp API integration via whatsapp-web.js.
+---
+
+# Whatsapp Api Messaging
+
+## 📱 WhatsApp API Integration (whatsapp-web.js)
+
+> **For AI Assistant**: Use this guide to send/receive WhatsApp messages from Python, integrate with periodic tasks, and manage the WhatsApp API server.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Server Setup](#server-setup)
+4. [Python Client](#python-client)
+5. [API Reference](#api-reference)
+6. [Periodic Scheduler Integration](#periodic-scheduler-integration)
+7. [Bot Development](#bot-development)
+8. [Session Management](#session-management)
+9. [Troubleshooting](#troubleshooting)
+
+---
+
+## Overview
+
+WhatsApp messaging is available via a local **Node.js REST API server** that wraps [whatsapp-web.js](https://github.com/nicholasjorge/whatsapp-web.js). Python code communicates with it over HTTP on \`localhost:3100\`.
+
+### Capabilities
+
+| Feature | Supported |
+|---------|-----------|
+| Send text messages | ✅ |
+| Send media (images, PDFs, docs) | ✅ |
+| Receive incoming messages | ✅ |
+| List all chats | ✅ |
+| Read chat history | ✅ |
+| Detect unanswered chats | ✅ |
+| Auto-reply bots | ✅ |
+| Group messages | ✅ |
+| Task failure notifications | ✅ |
+| Headless (no browser popups) | ✅ |
+| Session persistence (no re-scan) | ✅ |
+
+---
+
+## Architecture
+
+\`\`\`
+┌──────────────────┐       HTTP        ┌───────────────────┐      WebSocket     ┌──────────────┐
+│  Python           │  ──────────────▶ │  Node.js Server    │  ────────────────▶ │  WhatsApp    │
+│  (periodic, etc.) │  localhost:3100   │  (whatsapp-web.js) │   via Puppeteer    │  Web Servers │
+└──────────────────┘                   └───────────────────┘                    └──────────────┘
+                                              │
+                                       .wwebjs_auth/
+                                       (session saved)
+\`\`\`
+
+**Key paths:**
+
+| Component | Location |
+|-----------|----------|
+| Node.js server | \`C:\\DELETE LATER\\NVIDIACAGGLE\\whatsapp-api\\server.js\` |
+| Python module (periodic) | \`periodic/whatsapp.py\` |
+| Session data | \`C:\\DELETE LATER\\NVIDIACAGGLE\\whatsapp-api\\.wwebjs_auth/\` |
+
+---
+
+## Server Setup
+
+### Prerequisites
+
+- **Node.js** ≥ 18 (\`node --version\`)
+- **npm** (\`npm --version\`)
+
+### First-Time Setup
+
+\`\`\`powershell
+cd "C:\\DELETE LATER\\NVIDIACAGGLE\\whatsapp-api"
+npm install
+npx puppeteer browsers install chrome   # required — installs Chromium for Puppeteer
+node server.js
+\`\`\`
+
+On first run:
+1. A **QR code** appears in the terminal (also saved as \`qr_code.png\` and opened automatically)
+2. Open WhatsApp on your phone → **Settings → Linked Devices → Link a Device**
+3. Scan the QR code
+4. Terminal shows: \`✓ Authenticated\` → \`✓ WhatsApp client ready!\`
+
+### Subsequent Runs
+
+\`\`\`powershell
+cd "C:\\DELETE LATER\\NVIDIACAGGLE\\whatsapp-api"
+node server.js
+\`\`\`
+
+No QR scan needed — session is persisted in \`.wwebjs_auth/\`.
+
+### Running as Background Process
+
+\`\`\`powershell
+# PowerShell — run in background
+Start-Process -NoNewWindow -FilePath "node" -ArgumentList "server.js" \`
+    -WorkingDirectory "C:\\DELETE LATER\\NVIDIACAGGLE\\whatsapp-api"
+\`\`\`
+
+---
+
+## Python Client
+
+### From \`periodic\` package (recommended)
+
+\`\`\`python
+from periodic.whatsapp import WhatsAppClient, send_whatsapp_message
+
+# Full client
+wa = WhatsAppClient()
+wa.send("+972547885798", "Hello from Python! 🐍")
+wa.send_media("+972547885798", r"C:\\path\\to\\file.pdf", caption="Report attached")
+
+print(wa.is_ready())         # True/False
+print(wa.get_chats())        # List of all chats
+print(wa.get_messages())     # Recent incoming messages
+print(wa.get_chat_history("+972547885798"))  # Chat history
+
+# Quick one-liner
+send_whatsapp_message("+972547885798", "Quick message!")
+\`\`\`
+
+### From standalone script
+
+\`\`\`python
+# Uses: DELETE LATER/whatsapp_experiment/whatsapp_client.py
+import sys; sys.path.insert(0, r"C:\\Projects\\Swarmer\\DELETE LATER\\whatsapp_experiment")
+from whatsapp_client import WhatsAppClient
+
+wa = WhatsAppClient()
+wa.send("+972547885798", "Hello!")
+\`\`\`
+
+---
+
+## API Reference
+
+The Node.js server exposes these HTTP endpoints on \`http://localhost:3100\`:
+
+### \`GET /status\`
+
+Check if the WhatsApp client is connected.
+
+\`\`\`json
+{"ready": true, "uptime": 1234.5, "storedMessages": 7}
+\`\`\`
+
+### \`POST /send\`
+
+Send a text message.
+
+\`\`\`json
+// Request
+{"phone": "+972547885798", "message": "Hello!"}
+
+// Response
+{"success": true, "to": "972547885798@c.us", "messageId": "...", "timestamp": 1234567890}
+\`\`\`
+
+### \`POST /send-media\`
+
+Send a file (image, PDF, etc.).
+
+\`\`\`json
+// Request
+{"phone": "+972547885798", "mediaPath": "C:\\\\path\\\\to\\\\file.png", "caption": "Optional caption"}
+\`\`\`
+
+### \`GET /chats?limit=30\`
+
+List all conversations with last message info.
+
+\`\`\`json
+[
+  {
+    "id": "972547885798@c.us",
+    "name": "Contact Name",
+    "isGroup": false,
+    "unreadCount": 2,
+    "lastMessage": {"body": "...", "timestamp": 1234567890, "fromMe": false}
+  }
+]
+\`\`\`
+
+### \`GET /chat-history/:phone?limit=50\`
+
+Fetch message history for a specific chat.
+
+\`\`\`json
+[
+  {
+    "from": "972547885798@c.us",
+    "body": "Hello",
+    "timestamp": 1234567890,
+    "date": "2026-02-14T17:00:00.000Z",
+    "fromMe": false,
+    "type": "chat",
+    "hasMedia": false
+  }
+]
+\`\`\`
+
+### \`GET /messages?limit=20\`
+
+Get incoming messages buffered since server started.
+
+### \`GET /messages/:phone?limit=20\`
+
+Get incoming messages from a specific number.
+
+### \`GET /chat-by-name?name=NAME&q=QUERY&limit=50\`
+
+Search a chat by contact name. Supports \`@lid\` chats (new WhatsApp format). Returns messages matching query \`q\` via \`client.searchMessages()\`.
+
+- \`name\` (required): Contact/chat name (supports Hebrew, URL-encoded)
+- \`q\` (optional): text to search within the chat (e.g. \`youtu\` for YouTube links)
+- \`limit\` (optional): max results, default 50
+
+Prefers exact name match, falls back to partial match.
+
+\`\`\`json
+// Response
+{
+  "chatName": "שרון",
+  "chatId": "268611734245389@lid",
+  "messageCount": 14,
+  "messages": [
+    {"id": "...", "from": "...", "body": "https://youtu.be/...", "date": "2026-03-21T...", "fromMe": false, ...}
+  ]
+}
+\`\`\`
+
+---
+
+## Critical Lessons Learned (Apr 2026)
+
+### @lid vs @c.us Chat IDs
+
+WhatsApp now uses **\`@lid\`** format for many chats (e.g. \`268611734245389@lid\`) instead of the traditional \`@c.us\` (phone-based).
+
+- \`GET /chats\` returns both formats in the \`id\` field
+- \`getChatById()\` does **NOT** work with \`@lid\` IDs — throws \`waitForChatLoading\` error
+- \`chat.fetchMessages()\` also fails on \`@lid\` chats with the same error
+- **Working approach**: Use \`client.getChats()\` to find chat by name, then \`client.searchMessages(query, {chatId: ...})\` to search within it
+- The \`/chat-by-name\` endpoint handles this correctly
+
+### Puppeteer Chrome Version
+
+- After clearing \`.wwebjs_auth/\` or on fresh install, run \`npx puppeteer browsers install chrome\`
+- If the server hangs at "Initializing WhatsApp client..." forever, the Puppeteer Chrome is missing or outdated
+- Chrome version must match what Puppeteer expects (check error message for required version)
+
+### Session Stale After Chrome Update
+
+- If the session was created with an older Puppeteer Chrome and you install a new one, the session becomes stale
+- Server starts but never becomes \`ready\` — stuck at "Initializing WhatsApp client..."
+- **Fix**: Delete \`.wwebjs_auth/\`, restart server, re-scan QR code
+- To delete: must kill both \`node\` and \`chrome\` processes first (Chrome holds file locks)
+
+\`\`\`powershell
+Stop-Process -Name node -Force -ErrorAction SilentlyContinue
+Stop-Process -Name chrome -Force -ErrorAction SilentlyContinue
+Remove-Item "C:\\DELETE LATER\\NVIDIACAGGLE\\whatsapp-api\\.wwebjs_auth" -Recurse -Force
+\`\`\`
+
+### Corporate Proxy blocks localhost
+
+- Corporate HTTP proxy intercepts \`localhost\` requests and returns 403
+- **Python**: Use \`requests.Session()\` with \`session.trust_env = False\` and clear proxy env vars
+- **PowerShell**: Use \`Invoke-WebRequest\` without proxy (it usually bypasses for localhost)
+
+\`\`\`python
+import os, requests
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+session = requests.Session()
+session.trust_env = False  # bypass system proxy
+resp = session.get("http://localhost:3100/status")
+\`\`\`
+
+---
+
+## Periodic Scheduler Integration
+
+### Configuration (schedule.yaml)
+
+Add \`whatsapp\` to any task's \`notify\` section:
+
+\`\`\`yaml
+tasks:
+  - name: check-waiting-for-me
+    script: scripts/check_waiting_for_me.py
+    schedule: delta 6h
+    working_dir: C:\\Projects\\Swarmer
+    enabled: true
+    notify:
+      on_failure: true
+      on_success: false          # set true to get success notifications too
+      email: user@example.com
+      whatsapp: "+972547885798"  # ← WhatsApp notification
+\`\`\`
+
+### How It Works
+
+When a task completes, the scheduler checks the \`notify\` policy:
+- **\`on_failure: true\`** + task failed → sends WhatsApp failure alert
+- **\`on_success: true\`** + task succeeded → sends WhatsApp success summary
+
+The message includes task name, status, duration, error details.
+
+### Example Failure Notification
+
+\`\`\`
+⚠️ *Periodic Task Failure*
+
+❌ *check-waiting-for-me*
+   Status: failed
+   Exit code: 1
+   Attempts: 3
+   Duration: 45.2s
+   Error: Script returned non-zero exit code
+
+— _Periodic Scheduler_
+\`\`\`
+
+### Programmatic Use
+
+\`\`\`python
+from periodic.whatsapp import send_whatsapp_notification
+from periodic.models import RunResult, TaskStatus
+
+results = [RunResult(task_name="my-task", status=TaskStatus.FAILED, return_code=1)]
+send_whatsapp_notification("+972547885798", results, on_failure=True)
+\`\`\`
+
+---
+
+## Bot Development
+
+### Auto-Reply (in server.js)
+
+Add to the \`client.on('message')\` handler in \`server.js\`:
+
+\`\`\`javascript
+client.on('message', async msg => {
+    // Keyword-based auto-reply
+    if (msg.body.toLowerCase() === 'status') {
+        msg.reply('✅ All systems operational.');
+    }
+
+    // Forward to AI
+    if (msg.body.startsWith('!ask ')) {
+        const question = msg.body.slice(5);
+        // Call your AI API, get answer
+        msg.reply(\`🤖 Processing: "\${question}"...\`);
+    }
+});
+\`\`\`
+
+### Polling Bot (Python)
+
+\`\`\`python
+import time
+from periodic.whatsapp import WhatsAppClient
+
+wa = WhatsAppClient()
+seen = set()
+
+while True:
+    for msg in wa.get_messages(limit=10):
+        msg_id = f"{msg['from']}_{msg['timestamp']}"
+        if msg_id not in seen:
+            seen.add(msg_id)
+            if "help" in msg["body"].lower():
+                phone = msg["from"].replace("@c.us", "")
+                wa.send(phone, "How can I help you?")
+    time.sleep(5)
+\`\`\`
+
+### Unanswered Message Checker
+
+\`\`\`python
+from periodic.whatsapp import WhatsAppClient
+
+wa = WhatsAppClient()
+chats = wa.get_chats(limit=50)
+
+unanswered = [
+    c for c in chats
+    if c.get("lastMessage")
+    and not c["lastMessage"].get("fromMe")
+    and not c["isGroup"]
+]
+
+for c in unanswered:
+    print(f"  {c['name']}: {c['lastMessage']['body'][:60]}")
+\`\`\`
+
+---
+
+## Session Management
+
+### Session Persistence
+
+The WhatsApp session is stored in \`.wwebjs_auth/\` inside the server directory. This folder contains the browser session data that authenticates with WhatsApp servers.
+
+**Session survives:**
+- Server restarts
+- Computer reboots
+- Network disconnects
+
+**Session expires when:**
+- You delete the \`.wwebjs_auth/\` folder
+- You log out via WhatsApp → Settings → Linked Devices → remove the device
+- WhatsApp forces re-authentication (~weeks to months, rare)
+
+### Re-Authentication
+
+If the session expires:
+1. Delete \`.wwebjs_auth/\` folder (if corrupted)
+2. Restart \`node server.js\`
+3. Scan the new QR code
+
+### Backup
+
+To preserve the session, back up the \`.wwebjs_auth/\` folder.
+
+---
+
+## Troubleshooting
+
+### Server won't start: \`EADDRINUSE\`
+
+Another instance is already running on port 3100.
+
+\`\`\`powershell
+Stop-Process -Name "node" -Force
+Start-Sleep 2
+node server.js
+\`\`\`
+
+Or change the port: \`$env:WA_PORT = "3200"; node server.js\`
+
+### QR code not appearing
+
+The client is likely already authenticated. Check the terminal for \`✓ Authenticated\`.
+
+### Python can't connect (timeout)
+
+1. Verify the server is running: \`curl http://localhost:3100/status\`
+2. Check if a proxy is interfering — the request is to \`localhost\`, which should bypass proxies.
+3. Increase timeout in the Python client.
+
+### Messages not sending
+
+- Verify \`wa.is_ready()\` returns \`True\`
+- Phone number must include country code without \`+\` prefix in the chat ID (handled automatically)
+- The recipient must have WhatsApp installed
+
+### Server hangs at "Initializing WhatsApp client..."
+
+Puppeteer Chrome is missing or session is stale:
+1. Run \`npx puppeteer browsers install chrome\` in the server directory
+2. If still stuck, delete \`.wwebjs_auth/\` and re-scan QR (see "Session Stale After Chrome Update" above)
+
+### 403 from localhost requests (corporate proxy)
+
+The corporate proxy intercepts even localhost requests. In Python, use \`session.trust_env = False\`. See "Corporate Proxy blocks localhost" section above.
+
+### \`getChatById\` fails with \`waitForChatLoading\`
+
+The chat uses \`@lid\` format. Use \`/chat-by-name\` endpoint instead of \`/chat-history/:phone\`. See "@lid vs @c.us Chat IDs" section above.
+
+### Session expired
+
+Terminal shows QR code again on startup. Scan it with your phone.
+
+### \`pywhatkit\` vs \`whatsapp-web.js\`
+
+| Feature | pywhatkit (Python) | whatsapp-web.js (Node.js) |
+|---------|-------------------|--------------------------|
+| Send messages | ✅ (opens browser tab) | ✅ (headless) |
+| Receive messages | ❌ | ✅ |
+| Auto-reply | ❌ | ✅ |
+| Send media | Limited | ✅ |
+| Background service | ❌ | ✅ |
+| Session persistence | ❌ | ✅ |
+
+**Recommendation**: Use the Node.js REST API approach for all production use.
+
+---
+
+## Dependencies
+
+### Node.js (server)
+- \`whatsapp-web.js\` — WhatsApp Web client
+- \`express\` — HTTP server
+- \`qrcode-terminal\` — Terminal QR code display
+- \`qrcode\` — QR code image generation
+
+### Python (client)
+- \`requests\` — HTTP client (already in Swarmer env)
+- \`pywhatkit\` — Alternative simple sender (in \`requirements.txt\`)
+`
+  },
+
+  // ── Agentic GitHub Flow ──
+  {
+    id:          'agentic-github-flow',
+    name:        'Agentic GitHub Flow',
+    description: 'Set up and operate the agentic GitHub flow pattern: GitHub Issues as tasks, GitHub Actions as the agent brain, CI as the impartial judge, labels as a state machine. Covers repo scaffolding, workflow YAML authoring, self-hosted runner setup, Azure OpenAI wiring, troubleshooting, and BKMs from a working end-to-end run on Windows. Use when the user wants to set up an autonomous agent on any GitHub repo, extend the pattern to new repos, debug a workflow, add new phases, or understand how the system works. TRIGGER: user says "agentic github", "agent loop", "github actions agent", "llm github flow", "autonomous github", "set up the agent pattern", "new repo same methodology", "copy the agent setup", "github state machine", "label state machine".',
+    category:    'DevOps',
+    tags:        ['github', 'actions', 'issues', 'agents', 'ci', 'automation'],
+    icon:        '🤖',
+    author:      'Skills Store',
+    version:     '1.0.0',
+    content: `---
+name: agentic-github-flow
+description: >
+  Set up and operate the agentic GitHub flow pattern: GitHub Issues as tasks, GitHub Actions as the agent brain, CI as the impartial judge, labels as a state machine. Covers repo scaffolding, workflow YAML authoring, self-hosted runner setup, Azure OpenAI wiring, troubleshooting, and BKMs from a working end-to-end run on Windows. Use when the user wants to set up an autonomous agent on any GitHub repo, extend the pattern to new repos, debug a workflow, add new phases, or understand how the system works.
+  TRIGGER: user says "agentic github", "agent loop", "github actions agent", "llm github flow", "autonomous github", "set up the agent pattern", "new repo same methodology", "copy the agent setup", "github state machine", "label state machine".
+---
+
+# Agentic GitHub Flow — BKM & Methodology
+
+## What this pattern is
+
+GitHub as a state machine for autonomous agent work:
+
+| Role | Component |
+|---|---|
+| Units of work | GitHub Issues (with Goal + Success Criteria) |
+| Agent brain | GitHub Actions workflows |
+| Impartial judge | CI (pytest — the agent cannot self-certify) |
+| State machine | Issue labels |
+| Audit trail | Issue comments (every LLM call logged) |
+
+## State machine
+
+\`\`\`
+agent:queued  →  (deps met, orchestrator fires)  →  agent:ready
+agent:ready   →  [Phase 1: plan]  →  agent:in-progress
+                                          ↓
+                                   [Phase 2: code+PR]
+                                          ↓
+                                   [Phase 3: CI/pytest — dispatched by Phase 2]
+                                          ↓
+                               agent:done  OR  agent:blocked
+\`\`\`
+
+\`agent:queued\` = created but dependencies not yet met (future orchestrator manages this).
+Multiple issues can be \`agent:in-progress\` simultaneously — parallelism is free.
+
+---
+
+## Step 0 — MISSION.md (always fill this first)
+
+**\`MISSION.md\`** in the repo root is the single source of truth for what the project is building.
+The future \`agent-plan-mission.yml\` will read it and decompose it into GitHub Issues automatically.
+Until that exists, create issues manually from the Areas of Work section.
+
+### MISSION.md format
+
+\`\`\`markdown
+# Mission
+> One sentence. What are we building and why?
+
+## Context
+Why does this exist? 2–5 sentences of background.
+
+## Goals
+- [ ] Goal 1
+- [ ] Goal 2
+
+## Tech Stack
+| Concern | Decision |
+|---|---|
+| Language | Python 3.11 |
+| Test framework | pytest |
+
+## Areas of Work
+Ordered, dependency-aware. Mark parallel-safe ones with [parallel].
+1. Area A
+2. Area B  [parallel with A]
+3. Area C  (depends on A)
+
+## Out of Scope
+- Item 1
+
+## Human-in-the-Loop Checkpoints
+- [ ] After initial plan is posted (before code)
+- [ ] After each PR is opened (before merge)
+
+## Constraints
+| Constraint | Value |
+|---|---|
+| Max LLM calls/day | 50 |
+| Max open PRs | 3 |
+| Merge policy | Manual (human merges) |
+\`\`\`
+
+### Issue body convention (for dependency ordering)
+
+Add a \`Depends on:\` section to any issue that has prerequisites:
+\`\`\`markdown
+## Depends on
+- #3
+- #7
+\`\`\`
+The orchestrator checks this before promoting \`agent:queued\` → \`agent:ready\`.
+
+---
+
+## Infrastructure requirements
+
+### Azure OpenAI
+- Deployment name: \`gpt-5.4\` (or whatever is available)
+- API version: \`2024-12-01-preview\`
+- **Use \`max_completion_tokens\`, NOT \`max_tokens\`** — newer models reject the old param
+- Store as repo secrets: \`AZURE_OPENAI_ENDPOINT\`, \`AZURE_OPENAI_KEY\`
+
+### Self-hosted runner (Windows)
+Needed when the GitHub org has IP allowlisting that blocks cloud runners.
+
+1. Go to repo → Settings → Actions → Runners → New self-hosted runner
+2. Download and run the setup on the Windows machine
+3. Register with labels \`self-hosted, windows\`
+4. **One-time auto-start setup** — run this in an **elevated (Admin)** PowerShell once:
+   \`\`\`powershell
+   $action = New-ScheduledTaskAction -Execute "powershell.exe" \`
+     -Argument '-WindowStyle Minimized -NonInteractive -Command "Set-Location C:\\actions-runner; .\\run.cmd"'
+   $trigger = New-ScheduledTaskTrigger -AtLogOn
+   $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) \`
+     -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 2) -StartWhenAvailable $true
+   Register-ScheduledTask -TaskName "GitHubActionsRunner" -Action $action \`
+     -Trigger $trigger -Settings $settings -RunLevel Highest -Force
+   Start-ScheduledTask -TaskName "GitHubActionsRunner"
+   \`\`\`
+   After this, the runner starts automatically on every login — no manual action needed.
+5. Manual start (if needed): \`Start-Process -FilePath "C:\\actions-runner\\run.cmd" -WorkingDirectory "C:\\actions-runner" -WindowStyle Minimized\`
+6. Note: \`svc.cmd\` (Windows Service install) is NOT present in this runner build — use Task Scheduler instead.
+7. Add to runner \`.env\` to ensure Git is on PATH: \`PATH=C:\\Program Files\\Git\\bin;...rest...\`
+
+**How it works when your PC is off:** The orchestrator (GitHub cloud cron) keeps running and checks deps. When an issue becomes ready it applies \`agent:ready\`. The job queues on GitHub (up to 30 days). When your runner comes back online it picks up queued jobs automatically.
+
+### gh CLI
+- Install from https://cli.github.com/
+- Auth: \`gh auth login\` → select GitHub.com → HTTPS → token
+- SSO: \`gh auth refresh -h github.com -s repo,read:org\` then authorize at the org portal
+- Set proxy before any \`gh\` call: \`$env:HTTPS_PROXY = "http://proxy.example.com:8080"\`
+
+---
+
+## Workflow files
+
+All three files go in \`.github/workflows/\`.
+
+### Phase 1 — \`agent-pick-issue.yml\`
+
+Triggers on \`agent:ready\` label. Calls LLM, posts plan as comment, flips label to \`agent:in-progress\`, then dispatches Phase 2 via \`workflow_dispatch\`.
+
+Key requirements:
+- \`permissions: issues: write, contents: read, actions: write\`
+- \`actions: write\` is needed so \`gh workflow run\` can dispatch Phase 2
+- Use \`shell: powershell\` (NOT \`shell: bash\` — WSL bash can't open Windows runner temp files; NOT \`shell: pwsh\` — PS7 not installed by default)
+- Build the JSON payload as a PS hashtable → \`ConvertTo-Json -Depth 10\` → write to \`$env:RUNNER_TEMP\\payload.json\`
+- Call LLM with \`Invoke-RestMethod -Body ([System.IO.File]::ReadAllText(...))\` — **NOT** \`-InFile\` (causes 400 errors)
+- Proxy: \`Invoke-RestMethod\` does NOT honor \`HTTP_PROXY\` env vars — use \`-Proxy "http://..."\` if needed, or set no-proxy for internal endpoints
+- Write output to \`$env:GITHUB_OUTPUT\` using the heredoc pattern: \`"KEY<<EOF" | Out-File -Append; $value | Out-File -Append; "EOF" | Out-File -Append\`
+- Pass LLM output to \`actions/github-script\` via \`env:\` block → \`process.env.KEY\` (NOT template literals with \`\${{ steps.x.outputs.KEY }}\` — breaks when output contains backticks)
+- Dispatch Phase 2: \`gh workflow run agent-write-code.yml --repo $env:REPO -f issue_number=$env:ISSUE_NUMBER\`
+
+### Phase 2 — \`agent-write-code.yml\`
+
+Triggered by \`workflow_dispatch\` (from Phase 1) with input \`issue_number\`.
+
+Key requirements:
+- Add both trigger types:
+  \`\`\`yaml
+  on:
+    issues:
+      types: [labeled]           # catches manual agent:in-progress label
+    workflow_dispatch:
+      inputs:
+        issue_number:
+          required: true
+          type: string
+  \`\`\`
+- Fetch issue details via \`actions/github-script\` at the start (can't rely on \`github.event.issue.*\` when triggered via dispatch)
+- LLM system prompt: instruct it to return ONLY a \`\\\`\\\`\\\`json\` block containing an array of \`{path, content}\` objects
+- Extract with PS regex: \`if ($raw -match '(?s)\\\`\\\`\\\`json\\s*(.*?)\\s*\\\`\\\`\\\`')\`
+- Write files with \`[System.IO.File]::WriteAllText($f.path, $f.content)\`
+- Commit as \`github-actions[bot]\` and push to the new branch
+- Open PR body must contain \`Closes #N\` — CI uses this to find the linked issue
+- **Final step: dispatch CI** — Phase 2 must explicitly fire CI because GITHUB_TOKEN pushes cannot trigger \`pull_request\` events (GitHub security restriction):
+  \`\`\`powershell
+  gh workflow run ci.yml --repo $env:REPO -f pr_number=$env:PR_NUMBER
+  \`\`\`
+  Requires \`actions: write\` permission and \`GH_TOKEN: \${{ github.token }}\` in the step env.
+
+### Phase 3 — \`ci.yml\`
+
+Triggers via \`workflow_dispatch\` (dispatched by Phase 2) with input \`pr_number\`. Also triggers on \`pull_request\` for human-pushed PRs.
+
+Key requirements:
+- \`runs-on: [self-hosted, windows]\`
+- Do NOT use \`actions/setup-python\` — it tries to download Python from the internet (slow/blocked on corp network). Use the system Python path directly:
+  \`\`\`powershell
+  $python = "C:\\Users\\<you>\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+  & $python -m pip install pytest --quiet
+  & $python -m pytest --tb=short 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\\pytest_output.txt"
+  \`\`\`
+- Use \`continue-on-error: true\` on the pytest step so post-steps still run
+- First step must resolve the PR via API (works for both \`pull_request\` and \`workflow_dispatch\` triggers):
+  \`\`\`javascript
+  const num = context.payload.pull_request?.number ?? parseInt('\${{ inputs.pr_number || 0 }}');
+  const pr = await github.rest.pulls.get({ owner, repo, pull_number: num });
+  // then checkout pr.data.head.sha explicitly
+  \`\`\`
+- Find linked issue from PR body: \`body.match(/Closes #(\\d+)/i)\`
+- Pass PR url to JS steps via \`env:\` block, not template literals
+- On success: remove \`agent:in-progress\`, add \`agent:done\`, post comment
+- On failure: remove \`agent:in-progress\`, add \`agent:blocked\`, post pytest output as comment
+
+---
+
+## Known gotchas
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| \`400 Bad Request\` from Azure OpenAI | \`-InFile\` sends wrong content-type | Use \`-Body ([System.IO.File]::ReadAllText(...))\` |
+| \`max_tokens\` param error | New models use \`max_completion_tokens\` | Rename the param |
+| \`pwsh: command not found\` | PS7 not installed on runner | Use \`shell: powershell\` (PS5) |
+| \`bash: cannot open temp file\` | WSL bash, not Git bash, resolves as \`/bin/bash\` | Use \`shell: powershell\` |
+| Phase 2 never fires after Phase 1 | GITHUB_TOKEN can't trigger new workflow runs | Phase 1 must explicitly \`gh workflow run\` Phase 2 |
+| \`403: Resource not accessible\` on dispatch | Missing \`actions: write\` permission | Add to \`permissions:\` block in Phase 1 |
+| CI never fires on PR | setup-python hangs downloading Python | Remove \`actions/setup-python\`, use system Python path |
+| CI fires but issue label doesn't flip | Agent wrote \`\${{ steps.x.outputs.y }}\` in JS string | Pass via \`env:\` block, read with \`process.env.KEY\` |
+| CI never fires automatically after Phase 2 PR | GITHUB_TOKEN push cannot trigger \`pull_request\` events | Phase 2 must \`gh workflow run ci.yml -f pr_number=N\` explicitly |
+| CI reads wrong PR data when dispatch-triggered | \`context.payload.pull_request\` is null on dispatch | Resolve PR via API using \`inputs.pr_number\`, checkout \`head.sha\` explicitly |
+
+---
+
+## Checklist: new repo setup
+
+- [ ] Fill in \`MISSION.md\` before anything else
+- [ ] Create repo with issue template (Goal / Success Criteria / Acceptance Tests)
+- [ ] Create labels: \`agent:queued\`, \`agent:ready\`, \`agent:in-progress\`, \`agent:done\`, \`agent:blocked\`
+- [ ] Add secrets: \`AZURE_OPENAI_ENDPOINT\`, \`AZURE_OPENAI_KEY\`
+- [ ] Register self-hosted Windows runner with labels \`self-hosted, windows\`
+- [ ] Set up runner auto-start via Task Scheduler (elevated PowerShell, one-time)
+- [ ] Copy \`agent-pick-issue.yml\`, \`agent-write-code.yml\`, \`ci.yml\` from reference repo
+- [ ] Update Python path in \`ci.yml\` to match local machine
+- [ ] Verify runner is online (Settings → Actions → Runners)
+- [ ] Create a test issue, add \`agent:ready\`, watch Actions tab
+- [ ] Confirm full loop: plan comment → branch → PR → CI → \`agent:done\`
+
+---
+
+## Re-trigger pattern (for debugging)
+
+\`\`\`powershell
+# Set env for this terminal session
+$env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
+$env:HTTPS_PROXY = "http://proxy.example.com:8080"
+$env:HTTP_PROXY  = "http://proxy.example.com:8080"
+
+# Cycle labels to re-fire Phase 1
+gh issue edit $ISSUE --repo $REPO --remove-label "agent:ready"
+Start-Sleep -Seconds 2
+gh issue edit $ISSUE --repo $REPO --add-label "agent:ready"
+
+# Check runs
+gh run list --repo $REPO --limit 5 --json databaseId,name,conclusion,status,headBranch | ConvertFrom-Json | Format-Table
+
+# Tail failure log
+gh run view $RUN_ID --repo $REPO --log-failed | Select-Object -Last 20
+
+# Cancel a stuck run
+gh run cancel $RUN_ID --repo $REPO
+\`\`\`
+
+---
+
+## Orchestrator design (future — not yet built)
+
+File: \`agent-orchestrate.yml\`
+Trigger: \`schedule: '*/5 * * * *'\` (every 5 min, GitHub cloud, always on)
+
+Logic:
+1. Fetch all issues labeled \`agent:queued\`
+2. For each, parse \`Depends on: #N\` from the issue body
+3. Check if all referenced issues have label \`agent:done\`
+4. If yes → remove \`agent:queued\`, add \`agent:ready\` → Phase 1 fires
+5. If no → leave queued
+
+Parallelism is automatic — multiple issues can be \`agent:in-progress\` at once.
+The runner queues jobs; add more self-hosted runners for true parallel execution.
+
+---
+
+## Reference repo
+
+Working implementation: \`https://github.com/example-org/issue_gen_experiment\`
+- \`MISSION.md\` — project mission template
+- \`CONTEXT.md\` — technical log (runner name, secrets, current state)
+- \`flow.html\` — living mission dashboard (open in browser for human-readable status)
+- Completed Issue #1 end-to-end (hello.py, passing pytest, label → \`agent:done\`)
+- Workflow files: \`.github/workflows/agent-pick-issue.yml\`, \`agent-write-code.yml\`, \`ci.yml\`
+`
   }
 
 ];

@@ -135,7 +135,7 @@ function filterSkills() {
   const category = $('#category-filter').value;
 
   const filtered = window.SKILLS_DATA.filter(skill => {
-    const searchable = [skill.name, skill.description, ...skill.tags, skill.category];
+    const searchable = [skill.id, skill.name, skill.description, ...skill.tags, skill.category, skill.content];
     const matchSearch   = !query    || searchable.some(f => f.toLowerCase().includes(query));
     const matchCategory = !category || skill.category === category;
     return matchSearch && matchCategory;
