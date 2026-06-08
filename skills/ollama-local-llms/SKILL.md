@@ -9,61 +9,61 @@ description: >
   "no API cost", "llama locally", "gemma local", or "local inference".
 ---
 
-i Ollama — Local LLM Runner
+# Ollama — Local LLM Runner
 
 > **Purpose**: Run 100+ open-source LLMs locally. Zero API cost, fully
 > offline, private data never leaves the machine.
 
 ---
 
-ii Table of Contents
+## Table of Contents
 
-1. [Quick Reference](iquick-reference)
-2. [Installation](iinstallation)
-3. [Running Models](irunning-models)
-4. [Model Catalog](imodel-catalog)
-5. [REST API](irest-api)
-6. [Python SDK](ipython-sdk)
-7. [Embeddings](iembeddings)
-8. [Modelfile — Custom Models](imodelfile--custom-models)
-9. [Corporate Proxy Setup](iintel-proxy-setup)
-10. [Troubleshooting](itroubleshooting)
-11. [Lessons Learned](ilessons-learned)
+1. [Quick Reference](#quick-reference)
+2. [Installation](#installation)
+3. [Running Models](#running-models)
+4. [Model Catalog](#model-catalog)
+5. [REST API](#rest-api)
+6. [Python SDK](#python-sdk)
+7. [Embeddings](#embeddings)
+8. [Modelfile — Custom Models](#modelfile--custom-models)
+9. [Intel Proxy Setup](#intel-proxy-setup)
+10. [Troubleshooting](#troubleshooting)
+11. [Lessons Learned](#lessons-learned)
 
 ---
 
-ii Quick Reference
+## Quick Reference
 
 ```powershell
-i Install (Windows — paste in PowerShell)
+# Install (Windows — paste in PowerShell)
 irm https://ollama.com/install.ps1 | iex
 
-i Pull a model
-ollama pull gemma3          i 4B — fast, good quality
-ollama pull llama3.2        i Meta 3B — great for chat
-ollama pull phi4            i Microsoft 14B — strong reasoning
-ollama pull qwen2.5-coder   i Best local coding model
-ollama pull nomic-embed-text  i Embeddings
+# Pull a model
+ollama pull gemma3          # 4B — fast, good quality
+ollama pull llama3.2        # Meta 3B — great for chat
+ollama pull phi4            # Microsoft 14B — strong reasoning
+ollama pull qwen2.5-coder   # Best local coding model
+ollama pull nomic-embed-text  # Embeddings
 
-i Run interactive chat
+# Run interactive chat
 ollama run gemma3
 ollama run phi4
 
-i List local models
+# List local models
 ollama list
 
-i Remove a model
+# Remove a model
 ollama rm gemma3
 
-i Check running server
+# Check running server
 ollama ps
 ```
 
 ---
 
-ii Installation
+## Installation
 
-iii Windows
+### Windows
 ```powershell
 irm https://ollama.com/install.ps1 | iex
 ```
@@ -71,43 +71,43 @@ Or download installer: https://ollama.com/download/OllamaSetup.exe
 
 Ollama runs as a background service on `http://localhost:11434`.
 
-iii Verify installation
+### Verify installation
 ```powershell
 ollama --version
-curl http://localhost:11434   i should return "Ollama is running"
+curl http://localhost:11434   # should return "Ollama is running"
 ```
 
 ---
 
-ii Running Models
+## Running Models
 
-iii Interactive chat (terminal)
+### Interactive chat (terminal)
 ```powershell
 ollama run llama3.2
-i Type your message and press Enter
-i /bye to exit
+# Type your message and press Enter
+# /bye to exit
 ```
 
-iii One-shot (no interactive shell)
+### One-shot (no interactive shell)
 ```powershell
 ollama run gemma3 "Explain what a Docker container is in 2 sentences"
 ```
 
-iii Pass stdin
+### Pass stdin
 ```powershell
 Get-Content myfile.py | ollama run qwen2.5-coder "Review this Python code for bugs"
 ```
 
-iii With system prompt
+### With system prompt
 ```powershell
-ollama run --system "You are a helpful engineering assistant." llama3.2
+ollama run --system "You are a helpful Intel engineer." llama3.2
 ```
 
 ---
 
-ii Model Catalog
+## Model Catalog
 
-iii Best general-purpose models (run on most hardware)
+### Best general-purpose models (run on most hardware)
 
 | Model | Size | Best For | Pull Command |
 |-------|------|----------|--------------|
@@ -119,7 +119,7 @@ iii Best general-purpose models (run on most hardware)
 | `qwen2.5` | 7B | Multilingual, 128K ctx | `ollama pull qwen2.5` |
 | `deepseek-r1` | 8B | Reasoning / CoT | `ollama pull deepseek-r1` |
 
-iii Best coding models
+### Best coding models
 
 | Model | Size | Pull Command |
 |-------|------|-------------|
@@ -128,7 +128,7 @@ iii Best coding models
 | `codellama` | 7B | `ollama pull codellama` |
 | `phi4` | 14B | `ollama pull phi4` |
 
-iii Embedding models
+### Embedding models
 
 | Model | Size | Pull Command |
 |-------|------|-------------|
@@ -136,7 +136,7 @@ iii Embedding models
 | `mxbai-embed-large` | 335M | `ollama pull mxbai-embed-large` |
 | `all-minilm` | 22M | `ollama pull all-minilm` |
 
-iii Vision models (image understanding)
+### Vision models (image understanding)
 
 | Model | Size | Pull Command |
 |-------|------|-------------|
@@ -146,11 +146,11 @@ iii Vision models (image understanding)
 
 ---
 
-ii REST API
+## REST API
 
 Ollama exposes an OpenAI-compatible REST API at `http://localhost:11434`.
 
-iii Chat completion (streaming)
+### Chat completion (streaming)
 ```bash
 curl http://localhost:11434/api/chat -d '{
   "model": "gemma3",
@@ -159,7 +159,7 @@ curl http://localhost:11434/api/chat -d '{
 }'
 ```
 
-iii Generate (raw)
+### Generate (raw)
 ```bash
 curl http://localhost:11434/api/generate -d '{
   "model": "llama3.2",
@@ -168,17 +168,17 @@ curl http://localhost:11434/api/generate -d '{
 }'
 ```
 
-iii List models
+### List models
 ```bash
 curl http://localhost:11434/api/tags
 ```
 
-iii Pull a model via API
+### Pull a model via API
 ```bash
 curl http://localhost:11434/api/pull -d '{"name": "phi4"}'
 ```
 
-iii Embeddings
+### Embeddings
 ```bash
 curl http://localhost:11434/api/embed -d '{
   "model": "nomic-embed-text",
@@ -186,13 +186,13 @@ curl http://localhost:11434/api/embed -d '{
 }'
 ```
 
-iii OpenAI-compatible endpoint (drop-in replacement)
+### OpenAI-compatible endpoint (drop-in replacement)
 ```python
 from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:11434/v1",
-    api_key="ollama"   i required but ignored
+    api_key="ollama"   # required but ignored
 )
 
 response = client.chat.completions.create(
@@ -204,13 +204,13 @@ print(response.choices[0].message.content)
 
 ---
 
-ii Python SDK
+## Python SDK
 
 ```powershell
 pip install ollama
 ```
 
-iii Basic chat
+### Basic chat
 ```python
 import ollama
 
@@ -221,7 +221,7 @@ response = ollama.chat(
 print(response.message.content)
 ```
 
-iii Streaming response
+### Streaming response
 ```python
 import ollama
 
@@ -234,7 +234,7 @@ for chunk in stream:
     print(chunk.message.content, end="", flush=True)
 ```
 
-iii With system prompt
+### With system prompt
 ```python
 import ollama
 
@@ -248,7 +248,7 @@ response = ollama.chat(
 print(response.message.content)
 ```
 
-iii Multi-turn conversation
+### Multi-turn conversation
 ```python
 import ollama
 
@@ -266,7 +266,7 @@ while True:
     print(f"AI: {assistant_msg}\n")
 ```
 
-iii Generate (raw, no conversation)
+### Generate (raw, no conversation)
 ```python
 import ollama
 
@@ -277,7 +277,7 @@ response = ollama.generate(
 print(response.response)
 ```
 
-iii Embeddings
+### Embeddings
 ```python
 import ollama
 
@@ -285,28 +285,28 @@ result = ollama.embed(
     model="nomic-embed-text",
     input="The quick brown fox jumps over the lazy dog"
 )
-print(result.embeddings[0][:5])   i first 5 dimensions
+print(result.embeddings[0][:5])   # first 5 dimensions
 ```
 
-iii List / pull / delete models
+### List / pull / delete models
 ```python
 import ollama
 
-i List locally available models
+# List locally available models
 models = ollama.list()
 for m in models.models:
     print(m.model, m.size)
 
-i Pull a model
+# Pull a model
 ollama.pull("phi4")
 
-i Delete a model
+# Delete a model
 ollama.delete("phi4")
 ```
 
 ---
 
-ii Embeddings
+## Embeddings
 
 Use Ollama embeddings for RAG, semantic search, and similarity.
 
@@ -328,59 +328,59 @@ embeddings = [
     for t in texts
 ]
 
-i Compare first two (both about Python) vs third
-print(cosine_similarity(embeddings[0], embeddings[1]))  i high ~0.9
-print(cosine_similarity(embeddings[0], embeddings[2]))  i low ~0.4
+# Compare first two (both about Python) vs third
+print(cosine_similarity(embeddings[0], embeddings[1]))  # high ~0.9
+print(cosine_similarity(embeddings[0], embeddings[2]))  # low ~0.4
 ```
 
 ---
 
-ii Modelfile — Custom Models
+## Modelfile — Custom Models
 
 Create a `Modelfile` to customize any base model:
 
 ```dockerfile
 FROM llama3.2
 
-i Set system prompt
-SYSTEM "You are an expert semiconductor engineer. Answer only about semiconductor topics."
+# Set system prompt
+SYSTEM "You are an expert Intel chip engineer. Answer only about semiconductor topics."
 
-i Tune temperature (0=deterministic, 1=creative)
+# Tune temperature (0=deterministic, 1=creative)
 PARAMETER temperature 0.3
 
-i Context window size
+# Context window size
 PARAMETER num_ctx 8192
 
-i Stop tokens
+# Stop tokens
 PARAMETER stop "<|end|>"
 ```
 
 ```powershell
-i Build and name your custom model
-ollama create semiconductor-expert -f Modelfile
+# Build and name your custom model
+ollama create intel-expert -f Modelfile
 
-i Run it
-ollama run semiconductor-expert "What is the difference between 3nm and 2nm process nodes?"
+# Run it
+ollama run intel-expert "What is the difference between 3nm and 2nm process nodes?"
 ```
 
 ---
 
-ii Corporate Proxy Setup
+## Intel Proxy Setup
 
-Ollama downloads models from `ollama.com`. On a corporate network, the proxy
+Ollama downloads models from `ollama.com`. On Intel corporate network, the proxy
 is required.
 
-iii Set proxy for model downloads (Windows)
+### Set proxy for model downloads (Windows)
 ```powershell
-$env:HTTPS_PROXY = "http://proxy.example.com:8080"
-$env:HTTP_PROXY  = "http://proxy.example.com:8080"
+$env:HTTPS_PROXY = "http://proxy-iil.intel.com:912"
+$env:HTTP_PROXY  = "http://proxy-iil.intel.com:912"
 ollama pull gemma3
 ```
 
-iii Permanent (user environment variable)
+### Permanent (user environment variable)
 ```powershell
-[System.Environment]::SetEnvironmentVariable("HTTPS_PROXY", "http://proxy.example.com:8080", "User")
-[System.Environment]::SetEnvironmentVariable("HTTP_PROXY",  "http://proxy.example.com:8080", "User")
+[System.Environment]::SetEnvironmentVariable("HTTPS_PROXY", "http://proxy-iil.intel.com:912", "User")
+[System.Environment]::SetEnvironmentVariable("HTTP_PROXY",  "http://proxy-iil.intel.com:912", "User")
 ```
 
 > **Note**: Once models are downloaded they run entirely offline. The proxy is
@@ -388,37 +388,37 @@ iii Permanent (user environment variable)
 
 ---
 
-ii Troubleshooting
+## Troubleshooting
 
-iii "connection refused" — server not running
+### "connection refused" — server not running
 ```powershell
-i Start the Ollama server manually
+# Start the Ollama server manually
 ollama serve
 ```
 
-iii Model download fails (proxy issue on a corporate network)
+### Model download fails (proxy issue on Intel network)
 ```powershell
-$env:HTTPS_PROXY = "http://proxy.example.com:8080"
+$env:HTTPS_PROXY = "http://proxy-iil.intel.com:912"
 ollama pull gemma3
 ```
 
-iii Out of memory (model too large)
+### Out of memory (model too large)
 - Use a smaller quantized variant: `ollama pull llama3.1:8b-instruct-q4_0`
 - Check available VRAM: `nvidia-smi` or use CPU-only models like `phi4-mini`
 
-iii Slow responses (running on CPU)
+### Slow responses (running on CPU)
 - CPU inference is 10-30x slower than GPU
 - Use smaller models: `phi4-mini` (3.8B), `llama3.2` (3B), `gemma3` (1B)
 - Install CUDA drivers to enable GPU acceleration
 
-iii Check which GPU is being used
+### Check which GPU is being used
 ```powershell
-ollama ps   i shows model + hardware (CPU/GPU/VRAM used)
+ollama ps   # shows model + hardware (CPU/GPU/VRAM used)
 ```
 
 ---
 
-ii Lessons Learned
+## Lessons Learned
 
 - **Model sizes**: 3-8B models run fine on CPU (slow but usable). 14B+ need
   a GPU for reasonable speed.
@@ -427,7 +427,7 @@ ii Lessons Learned
 - **Best coding model**: `qwen2.5-coder:7b` consistently outperforms `codellama`.
 - **Embeddings**: `nomic-embed-text` is the standard choice for RAG pipelines.
 - **Privacy**: Once downloaded, models run 100% offline. No data sent to any
-  server. Safe for sensitive internal data.
+  server. Safe for sensitive Intel internal data.
 - **OpenAI drop-in**: Use `base_url="http://localhost:11434/v1"` with the
   `openai` Python package — no code changes needed.
 - **Context window**: Default is 2K tokens for most models. Set

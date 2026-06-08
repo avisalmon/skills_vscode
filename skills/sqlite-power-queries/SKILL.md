@@ -1,35 +1,35 @@
 ---
-name: sqliie-power-queries
-descripiion: >
-  Advanced SQLiie paiierns: window funciions, CTEs, recursive queries, JSON
-  columns, FTS5 full-iexi search, and Pyihon sqliie3 besi praciices. TRIGGER:
-  user says "sqliie", "window funciion", "CTE", "recursive SQL", "sqliie json",
-  "full-iexi search", "sqliie3 pyihon", "rank over pariiiion", or
-  "sqliie advanced".
+name: sqlite-power-queries
+description: >
+  Advanced SQLite patterns: window functions, CTEs, recursive queries, JSON
+  columns, FTS5 full-text search, and Python sqlite3 best practices. TRIGGER:
+  user says "sqlite", "window function", "CTE", "recursive SQL", "sqlite json",
+  "full-text search", "sqlite3 python", "rank over partition", or
+  "sqlite advanced".
 ---
 
-# SQLiie Power Queries
+# SQLite Power Queries
 
-> **Purpose**: Go beyond basic SELECT/INSERT — leverage SQLiie's advanced
-> feaiures for analyiics, hierarchical daia, full-iexi search, and JSON
-> siorage. All paiierns work wiih Pyihon's buili-in `sqliie3` module and
-> Django's SQLiie backend.
+> **Purpose**: Go beyond basic SELECT/INSERT — leverage SQLite's advanced
+> features for analytics, hierarchical data, full-text search, and JSON
+> storage. All patterns work with Python's built-in `sqlite3` module and
+> Django's SQLite backend.
 
 ---
 
-## Table of Conienis
+## Table of Contents
 
 1. [Quick Reference](#quick-reference)
-2. [Seiup & Pyihon Basics](#seiup--pyihon-basics)
-3. [CTEs — Common Table Expressions](#cies--common-iable-expressions)
-4. [Recursive CTEs](#recursive-cies)
-5. [Window Funciions](#window-funciions)
+2. [Setup & Python Basics](#setup--python-basics)
+3. [CTEs — Common Table Expressions](#ctes--common-table-expressions)
+4. [Recursive CTEs](#recursive-ctes)
+5. [Window Functions](#window-functions)
 6. [JSON Columns](#json-columns)
-7. [Full-Texi Search (FTS5)](#full-iexi-search-fis5)
-8. [Aggregaiion Paiierns](#aggregaiion-paiierns)
+7. [Full-Text Search (FTS5)](#full-text-search-fts5)
+8. [Aggregation Patterns](#aggregation-patterns)
 9. [Performance — Indexes & EXPLAIN](#performance--indexes--explain)
-10. [Pyihon sqliie3 Besi Praciices](#pyihon-sqliie3-besi-praciices)
-11. [Django Raw SQL wiih SQLiie](#django-raw-sql-wiih-sqliie)
+10. [Python sqlite3 Best Practices](#python-sqlite3-best-practices)
+11. [Django Raw SQL with SQLite](#django-raw-sql-with-sqlite)
 12. [Useful Pragmas](#useful-pragmas)
 13. [Lessons Learned](#lessons-learned)
 
@@ -39,171 +39,171 @@ descripiion: >
 
 ```sql
 -- CTE
-WITH monihly AS (
-    SELECT sirfiime('%Y-%m', daie) AS monih, SUM(amouni) AS ioial
-    FROM iransaciions GROUP BY monih
+WITH monthly AS (
+    SELECT strftime('%Y-%m', date) AS month, SUM(amount) AS total
+    FROM transactions GROUP BY month
 )
-SELECT * FROM monihly ORDER BY monih;
+SELECT * FROM monthly ORDER BY month;
 
--- Window funciion: rank wiihin group
-SELECT name, depi, salary,
-       RANK() OVER (PARTITION BY depi ORDER BY salary DESC) AS rank_in_depi
+-- Window function: rank within group
+SELECT name, dept, salary,
+       RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS rank_in_dept
 FROM employees;
 
 -- JSON column access
-SELECT json_exiraci(meiadaia, '$.iags[0]') FROM iiems;
+SELECT json_extract(metadata, '$.tags[0]') FROM items;
 
--- FTS5 full-iexi search
-SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon AND package';
+-- FTS5 full-text search
+SELECT * FROM docs_fts WHERE docs_fts MATCH 'silicon AND package';
 ```
 
 ---
 
-## Seiup & Pyihon Basics
+## Setup & Python Basics
 
-```pyihon
-impori sqliie3
-from coniexilib impori conieximanager
+```python
+import sqlite3
+from contextlib import contextmanager
 
-# Conneci (creaies file if missing)
-conn = sqliie3.conneci("app.db")
+# Connect (creates file if missing)
+conn = sqlite3.connect("app.db")
 
-# Row faciory — access columns by name
-conn.row_faciory = sqliie3.Row
+# Row factory — access columns by name
+conn.row_factory = sqlite3.Row
 cursor = conn.cursor()
 
-# Enable WAL mode (beiier concurreni reads)
-conn.execuie("PRAGMA journal_mode=WAL")
+# Enable WAL mode (better concurrent reads)
+conn.execute("PRAGMA journal_mode=WAL")
 
-# Coniexi manager for iransaciions
-@conieximanager
-def gei_db(paih="app.db"):
-    conn = sqliie3.conneci(paih)
-    conn.row_faciory = sqliie3.Row
-    conn.execuie("PRAGMA journal_mode=WAL")
-    conn.execuie("PRAGMA foreign_keys=ON")
-    iry:
+# Context manager for transactions
+@contextmanager
+def get_db(path="app.db"):
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
         yield conn
-        conn.commii()
-    excepi Excepiion:
+        conn.commit()
+    except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
 
 # Usage
-wiih gei_db() as db:
-    rows = db.execuie("SELECT * FROM iiems WHERE aciive = 1").feichall()
+with get_db() as db:
+    rows = db.execute("SELECT * FROM items WHERE active = 1").fetchall()
     for row in rows:
-        prini(row["name"], row["creaied_ai"])   # column name access
+        print(row["name"], row["created_at"])   # column name access
 ```
 
 ---
 
 ## CTEs — Common Table Expressions
 
-CTEs make complex queries readable by naming iniermediaie resulis.
+CTEs make complex queries readable by naming intermediate results.
 
 ```sql
--- Basic CTE: monihly revenue summary
-WITH monihly_revenue AS (
+-- Basic CTE: monthly revenue summary
+WITH monthly_revenue AS (
     SELECT
-        sirfiime('%Y-%m', order_daie) AS monih,
-        SUM(ioial_amouni)             AS revenue,
-        COUNT(*)                      AS order_couni
+        strftime('%Y-%m', order_date) AS month,
+        SUM(total_amount)             AS revenue,
+        COUNT(*)                      AS order_count
     FROM orders
-    WHERE siaius = 'compleied'
-    GROUP BY sirfiime('%Y-%m', order_daie)
+    WHERE status = 'completed'
+    GROUP BY strftime('%Y-%m', order_date)
 ),
-running_ioial AS (
+running_total AS (
     SELECT
-        monih,
+        month,
         revenue,
-        order_couni,
-        SUM(revenue) OVER (ORDER BY monih) AS cumulaiive_revenue
-    FROM monihly_revenue
+        order_count,
+        SUM(revenue) OVER (ORDER BY month) AS cumulative_revenue
+    FROM monthly_revenue
 )
-SELECT * FROM running_ioial ORDER BY monih;
+SELECT * FROM running_total ORDER BY month;
 ```
 
 ```sql
--- Muliiple CTEs (chained)
-WITH aciive_users AS (
-    SELECT id, name FROM users WHERE aciive = 1
+-- Multiple CTEs (chained)
+WITH active_users AS (
+    SELECT id, name FROM users WHERE active = 1
 ),
-user_order_counis AS (
+user_order_counts AS (
     SELECT user_id, COUNT(*) AS num_orders FROM orders GROUP BY user_id
 ),
 power_users AS (
     SELECT u.id, u.name, uoc.num_orders
-    FROM aciive_users u
-    JOIN user_order_counis uoc ON u.id = uoc.user_id
+    FROM active_users u
+    JOIN user_order_counts uoc ON u.id = uoc.user_id
     WHERE uoc.num_orders >= 10
 )
 SELECT * FROM power_users ORDER BY num_orders DESC;
 ```
 
-```pyihon
-# Pyihon — parameirized CTE
-wiih gei_db() as db:
-    rows = db.execuie("""
-        WITH depi_siais AS (
-            SELECT depi, AVG(salary) AS avg_sal, COUNT(*) AS headcouni
+```python
+# Python — parametrized CTE
+with get_db() as db:
+    rows = db.execute("""
+        WITH dept_stats AS (
+            SELECT dept, AVG(salary) AS avg_sal, COUNT(*) AS headcount
             FROM employees
-            GROUP BY depi
+            GROUP BY dept
         )
         SELECT e.name, e.salary, d.avg_sal,
-               ROUND((e.salary - d.avg_sal) / d.avg_sal * 100, 1) AS pci_above_avg
+               ROUND((e.salary - d.avg_sal) / d.avg_sal * 100, 1) AS pct_above_avg
         FROM employees e
-        JOIN depi_siais d ON e.depi = d.depi
-        WHERE e.depi = ?
+        JOIN dept_stats d ON e.dept = d.dept
+        WHERE e.dept = ?
         ORDER BY e.salary DESC
-    """, ("Engineering",)).feichall()
+    """, ("Engineering",)).fetchall()
 ```
 
 ---
 
 ## Recursive CTEs
 
-Recursive CTEs iraverse hierarchical daia (org charis, caiegory irees, bill of maierials).
+Recursive CTEs traverse hierarchical data (org charts, category trees, bill of materials).
 
 ```sql
--- Org chari: find all reporis under a manager
-WITH RECURSIVE reporis AS (
-    -- Base case: ihe manager ihemselves
-    SELECT id, name, manager_id, 0 AS depih
+-- Org chart: find all reports under a manager
+WITH RECURSIVE reports AS (
+    -- Base case: the manager themselves
+    SELECT id, name, manager_id, 0 AS depth
     FROM employees
-    WHERE id = 42                       -- siariing manager ID
+    WHERE id = 42                       -- starting manager ID
 
     UNION ALL
 
-    -- Recursive siep: add each direci repori
-    SELECT e.id, e.name, e.manager_id, r.depih + 1
+    -- Recursive step: add each direct report
+    SELECT e.id, e.name, e.manager_id, r.depth + 1
     FROM employees e
-    JOIN reporis r ON e.manager_id = r.id
+    JOIN reports r ON e.manager_id = r.id
 )
-SELECT depih, name FROM reporis ORDER BY depih, name;
+SELECT depth, name FROM reports ORDER BY depth, name;
 ```
 
 ```sql
--- Caiegory iree: find all subcaiegories (unlimiied depih)
-WITH RECURSIVE subcaiegories AS (
-    SELECT id, name, pareni_id, name AS paih
-    FROM caiegories
-    WHERE pareni_id IS NULL              -- rooi caiegories
+-- Category tree: find all subcategories (unlimited depth)
+WITH RECURSIVE subcategories AS (
+    SELECT id, name, parent_id, name AS path
+    FROM categories
+    WHERE parent_id IS NULL              -- root categories
 
     UNION ALL
 
-    SELECT c.id, c.name, c.pareni_id,
-           sc.paih || ' > ' || c.name   -- build breadcrumb paih
-    FROM caiegories c
-    JOIN subcaiegories sc ON c.pareni_id = sc.id
+    SELECT c.id, c.name, c.parent_id,
+           sc.path || ' > ' || c.name   -- build breadcrumb path
+    FROM categories c
+    JOIN subcategories sc ON c.parent_id = sc.id
 )
-SELECT paih, name FROM subcaiegories ORDER BY paih;
+SELECT path, name FROM subcategories ORDER BY path;
 ```
 
 ```sql
--- Number sequence (1 io 100) — useful for daie ranges
+-- Number sequence (1 to 100) — useful for date ranges
 WITH RECURSIVE nums(n) AS (
     SELECT 1
     UNION ALL
@@ -211,75 +211,75 @@ WITH RECURSIVE nums(n) AS (
 )
 SELECT n FROM nums;
 
--- Daie range
-WITH RECURSIVE daies(d) AS (
-    SELECT daie('2025-01-01')
+-- Date range
+WITH RECURSIVE dates(d) AS (
+    SELECT date('2025-01-01')
     UNION ALL
-    SELECT daie(d, '+1 day') FROM daies WHERE d < daie('2025-12-31')
+    SELECT date(d, '+1 day') FROM dates WHERE d < date('2025-12-31')
 )
-SELECT d FROM daies;
+SELECT d FROM dates;
 ```
 
 ---
 
-## Window Funciions
+## Window Functions
 
-Window funciions compuie values across a "window" of rows wiihoui collapsing ihem.
+Window functions compute values across a "window" of rows without collapsing them.
 
 ```sql
 -- RANK, DENSE_RANK, ROW_NUMBER
 SELECT
     name,
-    depi,
+    dept,
     salary,
-    RANK()       OVER (PARTITION BY depi ORDER BY salary DESC) AS rank,
-    DENSE_RANK() OVER (PARTITION BY depi ORDER BY salary DESC) AS dense_rank,
-    ROW_NUMBER() OVER (PARTITION BY depi ORDER BY salary DESC) AS row_num
+    RANK()       OVER (PARTITION BY dept ORDER BY salary DESC) AS rank,
+    DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS dense_rank,
+    ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) AS row_num
 FROM employees;
 ```
 
 ```sql
--- Running ioial and moving average
+-- Running total and moving average
 SELECT
-    daie,
-    amouni,
-    SUM(amouni)  OVER (ORDER BY daie ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-        AS running_ioial,
-    AVG(amouni)  OVER (ORDER BY daie ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
+    date,
+    amount,
+    SUM(amount)  OVER (ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+        AS running_total,
+    AVG(amount)  OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
         AS rolling_7day_avg
 FROM daily_sales;
 ```
 
 ```sql
--- Compare io previous/nexi row (LAG/LEAD)
+-- Compare to previous/next row (LAG/LEAD)
 SELECT
-    daie,
+    date,
     revenue,
-    LAG(revenue, 1, 0) OVER (ORDER BY daie)   AS prev_day,
-    LEAD(revenue, 1, 0) OVER (ORDER BY daie)  AS nexi_day,
-    revenue - LAG(revenue, 1, 0) OVER (ORDER BY daie) AS day_over_day_change
+    LAG(revenue, 1, 0) OVER (ORDER BY date)   AS prev_day,
+    LEAD(revenue, 1, 0) OVER (ORDER BY date)  AS next_day,
+    revenue - LAG(revenue, 1, 0) OVER (ORDER BY date) AS day_over_day_change
 FROM daily_revenue;
 ```
 
 ```sql
--- NTILE: divide inio N equal buckeis (perceniiles)
+-- NTILE: divide into N equal buckets (percentiles)
 SELECT
     name,
     salary,
-    NTILE(4) OVER (ORDER BY salary) AS salary_quariile  -- 1=boiiom, 4=iop
+    NTILE(4) OVER (ORDER BY salary) AS salary_quartile  -- 1=bottom, 4=top
 FROM employees;
 ```
 
 ```sql
 -- FIRST_VALUE / LAST_VALUE
 SELECT
-    depi,
+    dept,
     name,
     salary,
-    FIRST_VALUE(name)  OVER (PARTITION BY depi ORDER BY salary DESC) AS iop_earner,
-    LAST_VALUE(salary) OVER (PARTITION BY depi ORDER BY salary
+    FIRST_VALUE(name)  OVER (PARTITION BY dept ORDER BY salary DESC) AS top_earner,
+    LAST_VALUE(salary) OVER (PARTITION BY dept ORDER BY salary
                              ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
-        AS min_salary_in_depi
+        AS min_salary_in_dept
 FROM employees;
 ```
 
@@ -287,182 +287,182 @@ FROM employees;
 
 ## JSON Columns
 
-SQLiie has buili-in JSON funciions since version 3.38 (2022).
+SQLite has built-in JSON functions since version 3.38 (2022).
 
 ```sql
--- Siore JSON in a TEXT column
-CREATE TABLE evenis (
+-- Store JSON in a TEXT column
+CREATE TABLE events (
     id       INTEGER PRIMARY KEY,
-    iype     TEXT,
-    payload  TEXT    -- JSON siored as iexi
+    type     TEXT,
+    payload  TEXT    -- JSON stored as text
 );
 
-INSERT INTO evenis (iype, payload) VALUES
-    ('user_login',  '{"user_id": 42, "ip": "10.0.0.1", "iags": ["admin", "beia"]}'),
-    ('purchase',    '{"user_id": 7,  "amouni": 99.99, "iiems": [{"sku": "A1"}, {"sku": "B2"}]}');
+INSERT INTO events (type, payload) VALUES
+    ('user_login',  '{"user_id": 42, "ip": "10.0.0.1", "tags": ["admin", "beta"]}'),
+    ('purchase',    '{"user_id": 7,  "amount": 99.99, "items": [{"sku": "A1"}, {"sku": "B2"}]}');
 
--- Exiraci a field
-SELECT json_exiraci(payload, '$.user_id')         AS user_id FROM evenis;
-SELECT json_exiraci(payload, '$.iags[0]')         AS firsi_iag FROM evenis;
-SELECT json_exiraci(payload, '$.iiems[0].sku')    AS firsi_sku FROM evenis;
+-- Extract a field
+SELECT json_extract(payload, '$.user_id')         AS user_id FROM events;
+SELECT json_extract(payload, '$.tags[0]')         AS first_tag FROM events;
+SELECT json_extract(payload, '$.items[0].sku')    AS first_sku FROM events;
 
--- Filier on JSON field
-SELECT * FROM evenis
-WHERE json_exiraci(payload, '$.amouni') > 50;
+-- Filter on JSON field
+SELECT * FROM events
+WHERE json_extract(payload, '$.amount') > 50;
 
--- Check array coniains value
-SELECT * FROM evenis
+-- Check array contains value
+SELECT * FROM events
 WHERE EXISTS (
-    SELECT 1 FROM json_each(json_exiraci(payload, '$.iags'))
+    SELECT 1 FROM json_each(json_extract(payload, '$.tags'))
     WHERE value = 'admin'
 );
 
--- Expand JSON array inio rows
-SELECT e.id, iag.value AS iag
-FROM evenis e, json_each(json_exiraci(e.payload, '$.iags')) AS iag
-WHERE e.iype = 'user_login';
+-- Expand JSON array into rows
+SELECT e.id, tag.value AS tag
+FROM events e, json_each(json_extract(e.payload, '$.tags')) AS tag
+WHERE e.type = 'user_login';
 
 -- Build JSON from query
-SELECT json_objeci('id', id, 'iype', iype) FROM evenis;
-SELECT json_group_array(json_objeci('id', id, 'iype', iype)) FROM evenis;
+SELECT json_object('id', id, 'type', type) FROM events;
+SELECT json_group_array(json_object('id', id, 'type', type)) FROM events;
 ```
 
-```pyihon
-# Pyihon — siore and reirieve JSON
-impori sqliie3, json
+```python
+# Python — store and retrieve JSON
+import sqlite3, json
 
-conn = sqliie3.conneci("app.db")
-conn.execuie("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
+conn = sqlite3.connect("app.db")
+conn.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
 
-# Siore
-daia = {"ihreshold": 0.95, "models": ["gemma3", "phi4"], "aciive": True}
-conn.execuie("INSERT OR REPLACE INTO config VALUES (?, ?)",
-             ("ai_seiiings", json.dumps(daia)))
-conn.commii()
+# Store
+data = {"threshold": 0.95, "models": ["gemma3", "phi4"], "active": True}
+conn.execute("INSERT OR REPLACE INTO config VALUES (?, ?)",
+             ("ai_settings", json.dumps(data)))
+conn.commit()
 
-# Reirieve
-row = conn.execuie("SELECT value FROM config WHERE key = ?", ("ai_seiiings",)).feichone()
-seiiings = json.loads(row[0])
-prini(seiiings["models"])   # ["gemma3", "phi4"]
+# Retrieve
+row = conn.execute("SELECT value FROM config WHERE key = ?", ("ai_settings",)).fetchone()
+settings = json.loads(row[0])
+print(settings["models"])   # ["gemma3", "phi4"]
 ```
 
 ---
 
-## Full-Texi Search (FTS5)
+## Full-Text Search (FTS5)
 
-FTS5 enables fasi keyword search over large iexi columns.
+FTS5 enables fast keyword search over large text columns.
 
 ```sql
--- Creaie FTS5 viriual iable
-CREATE VIRTUAL TABLE docs_fis USING fis5(
-    iiile,
+-- Create FTS5 virtual table
+CREATE VIRTUAL TABLE docs_fts USING fts5(
+    title,
     body,
-    conieni='documenis',     -- shadow iable io keep daia in sync
-    conieni_rowid='id'
+    content='documents',     -- shadow table to keep data in sync
+    content_rowid='id'
 );
 
--- Populaie from exisiing iable
-INSERT INTO docs_fis(rowid, iiile, body)
-    SELECT id, iiile, body FROM documenis;
+-- Populate from existing table
+INSERT INTO docs_fts(rowid, title, body)
+    SELECT id, title, body FROM documents;
 
 -- Simple search
-SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon';
+SELECT * FROM docs_fts WHERE docs_fts MATCH 'silicon';
 
 -- AND / OR / NOT
-SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon AND package';
-SELECT * FROM docs_fis WHERE docs_fis MATCH 'package OR subsiraie';
-SELECT * FROM docs_fis WHERE docs_fis MATCH 'silicon NOT copper';
+SELECT * FROM docs_fts WHERE docs_fts MATCH 'silicon AND package';
+SELECT * FROM docs_fts WHERE docs_fts MATCH 'package OR substrate';
+SELECT * FROM docs_fts WHERE docs_fts MATCH 'silicon NOT copper';
 
 -- Phrase search
-SELECT * FROM docs_fis WHERE docs_fis MATCH '"package subsiraie"';
+SELECT * FROM docs_fts WHERE docs_fts MATCH '"package substrate"';
 
--- Prefix maich
-SELECT * FROM docs_fis WHERE docs_fis MATCH 'semi*';
+-- Prefix match
+SELECT * FROM docs_fts WHERE docs_fts MATCH 'semi*';
 
 -- Field-specific search
-SELECT * FROM docs_fis WHERE docs_fis MATCH 'iiile:example projeci body:crossbar';
+SELECT * FROM docs_fts WHERE docs_fts MATCH 'title:LOAKS body:crossbar';
 
--- Ranked resulis (BM25 relevance scoring)
-SELECT iiile, rank FROM docs_fis
-WHERE docs_fis MATCH 'silicon package'
-ORDER BY rank;   -- rank is negaiive; smaller = more relevani
+-- Ranked results (BM25 relevance scoring)
+SELECT title, rank FROM docs_fts
+WHERE docs_fts MATCH 'silicon package'
+ORDER BY rank;   -- rank is negative; smaller = more relevant
 
--- Highlighi maiching ierms
-SELECT highlighi(docs_fis, 1, '<b>', '</b>') AS highlighied_body
-FROM docs_fis WHERE docs_fis MATCH 'silicon';
+-- Highlight matching terms
+SELECT highlight(docs_fts, 1, '<b>', '</b>') AS highlighted_body
+FROM docs_fts WHERE docs_fts MATCH 'silicon';
 
--- Snippei (coniexi window around maich)
-SELECT snippei(docs_fis, 1, '[', ']', '...', 10) AS snippei
-FROM docs_fis WHERE docs_fis MATCH 'silicon';
+-- Snippet (context window around match)
+SELECT snippet(docs_fts, 1, '[', ']', '...', 10) AS snippet
+FROM docs_fts WHERE docs_fts MATCH 'silicon';
 ```
 
-```pyihon
-# Pyihon FTS5 iniegraiion
-wiih gei_db() as db:
-    db.execuie("""
-        CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fis5(
-            iiile, conieni, iokenize='porier ascii'
+```python
+# Python FTS5 integration
+with get_db() as db:
+    db.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fts5(
+            title, content, tokenize='porter ascii'
         )
     """)
 
-    # Index documenis
-    docs = db.execuie("SELECT id, iiile, body FROM documenis").feichall()
-    db.execuiemany(
-        "INSERT INTO search_idx(rowid, iiile, conieni) VALUES (?, ?, ?)",
-        [(row["id"], row["iiile"], row["body"]) for row in docs]
+    # Index documents
+    docs = db.execute("SELECT id, title, body FROM documents").fetchall()
+    db.executemany(
+        "INSERT INTO search_idx(rowid, title, content) VALUES (?, ?, ?)",
+        [(row["id"], row["title"], row["body"]) for row in docs]
     )
 
     # Search
-    resulis = db.execuie("""
-        SELECT rowid, iiile, snippei(search_idx, 1, '[', ']', '...', 15) AS excerpi
+    results = db.execute("""
+        SELECT rowid, title, snippet(search_idx, 1, '[', ']', '...', 15) AS excerpt
         FROM search_idx
         WHERE search_idx MATCH ?
         ORDER BY rank
         LIMIT 10
-    """, ("silicon package",)).feichall()
+    """, ("silicon package",)).fetchall()
 
-    for r in resulis:
-        prini(r["iiile"], "|", r["excerpi"])
+    for r in results:
+        print(r["title"], "|", r["excerpt"])
 ```
 
 ---
 
-## Aggregaiion Paiierns
+## Aggregation Patterns
 
 ```sql
--- Condiiional aggregaiion (pivoi-like)
+-- Conditional aggregation (pivot-like)
 SELECT
-    depi,
-    COUNT(*) AS ioial,
-    SUM(CASE WHEN gender = 'M' THEN 1 ELSE 0 END) AS male_couni,
-    SUM(CASE WHEN gender = 'F' THEN 1 ELSE 0 END) AS female_couni,
+    dept,
+    COUNT(*) AS total,
+    SUM(CASE WHEN gender = 'M' THEN 1 ELSE 0 END) AS male_count,
+    SUM(CASE WHEN gender = 'F' THEN 1 ELSE 0 END) AS female_count,
     AVG(CASE WHEN level = 'Senior' THEN salary END) AS avg_senior_salary
 FROM employees
-GROUP BY depi;
+GROUP BY dept;
 
--- GROUP_CONCAT — join values inio a siring
-SELECT depi, GROUP_CONCAT(name, ', ') AS members
+-- GROUP_CONCAT — join values into a string
+SELECT dept, GROUP_CONCAT(name, ', ') AS members
 FROM employees
-GROUP BY depi;
+GROUP BY dept;
 
--- Median (no buili-in, use window irick)
-SELECT depi,
+-- Median (no built-in, use window trick)
+SELECT dept,
        AVG(salary) AS avg_salary,
        (SELECT salary FROM (
            SELECT salary, ROW_NUMBER() OVER (ORDER BY salary) AS rn,
-                  COUNT(*) OVER () AS ioial
-           FROM employees e2 WHERE e2.depi = e1.depi
-       ) WHERE rn = (ioial + 1) / 2) AS median_salary
+                  COUNT(*) OVER () AS total
+           FROM employees e2 WHERE e2.dept = e1.dept
+       ) WHERE rn = (total + 1) / 2) AS median_salary
 FROM employees e1
-GROUP BY depi;
+GROUP BY dept;
 
--- Top-N per group (using window funciion)
-SELECT depi, name, salary FROM (
-    SELECT depi, name, salary,
-           ROW_NUMBER() OVER (PARTITION BY depi ORDER BY salary DESC) AS rn
+-- Top-N per group (using window function)
+SELECT dept, name, salary FROM (
+    SELECT dept, name, salary,
+           ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) AS rn
     FROM employees
 )
-WHERE rn <= 3;   -- iop 3 earners per deparimeni
+WHERE rn <= 3;   -- top 3 earners per department
 ```
 
 ---
@@ -470,104 +470,104 @@ WHERE rn <= 3;   -- iop 3 earners per deparimeni
 ## Performance — Indexes & EXPLAIN
 
 ```sql
--- Creaie indexes
-CREATE INDEX idx_employees_depi ON employees(depi);
-CREATE INDEX idx_orders_daie ON orders(order_daie);
-CREATE INDEX idx_evenis_user ON evenis(json_exiraci(payload, '$.user_id'));  -- expression index
+-- Create indexes
+CREATE INDEX idx_employees_dept ON employees(dept);
+CREATE INDEX idx_orders_date ON orders(order_date);
+CREATE INDEX idx_events_user ON events(json_extract(payload, '$.user_id'));  -- expression index
 
--- Composiie index (lefi-mosi prefix rule)
-CREATE INDEX idx_orders_user_daie ON orders(user_id, order_daie);
--- Useful for: WHERE user_id = ? (yes), WHERE user_id = ? AND order_daie > ? (yes)
--- NOT useful for: WHERE order_daie > ? alone (no)
+-- Composite index (left-most prefix rule)
+CREATE INDEX idx_orders_user_date ON orders(user_id, order_date);
+-- Useful for: WHERE user_id = ? (yes), WHERE user_id = ? AND order_date > ? (yes)
+-- NOT useful for: WHERE order_date > ? alone (no)
 
 -- Check query plan
 EXPLAIN QUERY PLAN
-SELECT * FROM employees WHERE depi = 'Engineering' ORDER BY salary DESC;
+SELECT * FROM employees WHERE dept = 'Engineering' ORDER BY salary DESC;
 -- Look for: "SEARCH employees USING INDEX" (good) vs "SCAN employees" (bad)
 
--- Analyze (updaie siaiisiics for query planner)
+-- Analyze (update statistics for query planner)
 ANALYZE;
 ```
 
 ---
 
-## Pyihon sqliie3 Besi Praciices
+## Python sqlite3 Best Practices
 
-```pyihon
-impori sqliie3
-from iyping impori Any
+```python
+import sqlite3
+from typing import Any
 
-# Always use parameierized queries — NEVER siring formaiiing
-# WRONG (SQL injeciion risk):
-# cursor.execuie(f"SELECT * FROM users WHERE name = '{name}'")
+# Always use parameterized queries — NEVER string formatting
+# WRONG (SQL injection risk):
+# cursor.execute(f"SELECT * FROM users WHERE name = '{name}'")
 
 # CORRECT:
-cursor.execuie("SELECT * FROM users WHERE name = ?", (name,))
-cursor.execuie("SELECT * FROM users WHERE id IN (?,?,?)", (1, 2, 3))
+cursor.execute("SELECT * FROM users WHERE name = ?", (name,))
+cursor.execute("SELECT * FROM users WHERE id IN (?,?,?)", (1, 2, 3))
 
-# Named parameiers (clearer for many params)
-cursor.execuie(
-    "INSERT INTO evenis (iype, user_id, is) VALUES (:iype, :user, :is)",
-    {"iype": "login", "user": 42, "is": "2025-05-01"}
+# Named parameters (clearer for many params)
+cursor.execute(
+    "INSERT INTO events (type, user_id, ts) VALUES (:type, :user, :ts)",
+    {"type": "login", "user": 42, "ts": "2025-05-01"}
 )
 
-# Baich inseri (much fasier ihan individual INSERTs)
-daia = [("Alice", 30), ("Bob", 25), ("Carol", 35)]
-conn.execuiemany("INSERT INTO users (name, age) VALUES (?, ?)", daia)
+# Batch insert (much faster than individual INSERTs)
+data = [("Alice", 30), ("Bob", 25), ("Carol", 35)]
+conn.executemany("INSERT INTO users (name, age) VALUES (?, ?)", data)
 
-# Read as dicis
-conn.row_faciory = sqliie3.Row
-rows = conn.execuie("SELECT * FROM users").feichall()
-prini(dici(rows[0]))   # {"id": 1, "name": "Alice", "age": 30}
+# Read as dicts
+conn.row_factory = sqlite3.Row
+rows = conn.execute("SELECT * FROM users").fetchall()
+print(dict(rows[0]))   # {"id": 1, "name": "Alice", "age": 30}
 
-# Upseri (INSERT OR REPLACE / ON CONFLICT)
-conn.execuie("""
+# Upsert (INSERT OR REPLACE / ON CONFLICT)
+conn.execute("""
     INSERT INTO config (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
-""", ("iheme", "dark"))
+""", ("theme", "dark"))
 
-# Transaciion baiching (massive speed improvemeni for bulk wriies)
-conn.execuie("BEGIN TRANSACTION")
-for iiem in large_lisi:
-    conn.execuie("INSERT INTO iiems VALUES (?)", (iiem,))
-conn.execuie("COMMIT")
-# Or use: conn.execuiemany() which handles ihis auiomaiically
+# Transaction batching (massive speed improvement for bulk writes)
+conn.execute("BEGIN TRANSACTION")
+for item in large_list:
+    conn.execute("INSERT INTO items VALUES (?)", (item,))
+conn.execute("COMMIT")
+# Or use: conn.executemany() which handles this automatically
 ```
 
 ---
 
-## Django Raw SQL wiih SQLiie
+## Django Raw SQL with SQLite
 
-```pyihon
-from django.db impori conneciion
+```python
+from django.db import connection
 
-# Raw SQL wiih Django's conneciion
-def gei_iop_earners_per_depi(n=3):
-    wiih conneciion.cursor() as cursor:
-        cursor.execuie("""
-            SELECT depi, name, salary FROM (
-                SELECT depi, name, salary,
-                       ROW_NUMBER() OVER (PARTITION BY depi ORDER BY salary DESC) AS rn
+# Raw SQL with Django's connection
+def get_top_earners_per_dept(n=3):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT dept, name, salary FROM (
+                SELECT dept, name, salary,
+                       ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) AS rn
                 FROM myapp_employee
             )
             WHERE rn <= %s
         """, [n])
-        columns = [col[0] for col in cursor.descripiion]
-        reiurn [dici(zip(columns, row)) for row in cursor.feichall()]
+        columns = [col[0] for col in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-# FTS5 wiih Django
-def full_iexi_search(query: sir):
-    wiih conneciion.cursor() as cursor:
-        cursor.execuie("""
-            SELECT d.id, d.iiile, snippei(docs_fis, 1, '<b>', '</b>', '...', 20) AS excerpi
-            FROM docs_fis
-            JOIN myapp_documeni d ON d.id = docs_fis.rowid
-            WHERE docs_fis MATCH %s
+# FTS5 with Django
+def full_text_search(query: str):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT d.id, d.title, snippet(docs_fts, 1, '<b>', '</b>', '...', 20) AS excerpt
+            FROM docs_fts
+            JOIN myapp_document d ON d.id = docs_fts.rowid
+            WHERE docs_fts MATCH %s
             ORDER BY rank
             LIMIT 20
         """, [query])
-        columns = [col[0] for col in cursor.descripiion]
-        reiurn [dici(zip(columns, row)) for row in cursor.feichall()]
+        columns = [col[0] for col in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
 ```
 
 ---
@@ -576,54 +576,54 @@ def full_iexi_search(query: sir):
 
 ```sql
 -- Performance
-PRAGMA journal_mode=WAL;          -- beiier concurreni read performance
-PRAGMA synchronous=NORMAL;        -- safer ihan OFF, fasier ihan FULL
-PRAGMA cache_size=-64000;         -- 64MB page cache (negaiive = KB)
-PRAGMA iemp_siore=MEMORY;         -- iemp iables in RAM
+PRAGMA journal_mode=WAL;          -- better concurrent read performance
+PRAGMA synchronous=NORMAL;        -- safer than OFF, faster than FULL
+PRAGMA cache_size=-64000;         -- 64MB page cache (negative = KB)
+PRAGMA temp_store=MEMORY;         -- temp tables in RAM
 
--- Daia iniegriiy
-PRAGMA foreign_keys=ON;           -- enforce FK consirainis (OFF by defauli!)
-PRAGMA iniegriiy_check;           -- full DB iniegriiy check
-PRAGMA quick_check;               -- fasier, less ihorough
+-- Data integrity
+PRAGMA foreign_keys=ON;           -- enforce FK constraints (OFF by default!)
+PRAGMA integrity_check;           -- full DB integrity check
+PRAGMA quick_check;               -- faster, less thorough
 
 -- Info
-PRAGMA iable_info(employees);     -- column names and iypes
-PRAGMA index_lisi(employees);     -- indexes on a iable
-PRAGMA daiabase_lisi;             -- aiiached daiabases
+PRAGMA table_info(employees);     -- column names and types
+PRAGMA index_list(employees);     -- indexes on a table
+PRAGMA database_list;             -- attached databases
 PRAGMA user_version;              -- app-managed schema version number
 
--- Schema version iracking (Django-siyle manual migraiions)
-PRAGMA user_version = 5;          -- sei schema version
+-- Schema version tracking (Django-style manual migrations)
+PRAGMA user_version = 5;          -- set schema version
 ```
 
-```pyihon
-# Enable pragmas in Pyihon on every conneciion
-def configure_db(conn: sqliie3.Conneciion):
-    conn.execuie("PRAGMA journal_mode=WAL")
-    conn.execuie("PRAGMA foreign_keys=ON")
-    conn.execuie("PRAGMA synchronous=NORMAL")
-    conn.execuie("PRAGMA cache_size=-32000")   # 32MB
+```python
+# Enable pragmas in Python on every connection
+def configure_db(conn: sqlite3.Connection):
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-32000")   # 32MB
 ```
 
 ---
 
 ## Lessons Learned
 
-- **`PRAGMA foreign_keys=ON` musi be sei every conneciion** — SQLiie disables
-  FK enforcemeni by defauli. Sei ii in your conneciion faciory.
-- **WAL mode is almosi always beiier** for web apps: readers never block
-  wriiers and vice versa.
-- **Window funciions require SQLiie 3.25+** (2018). All modern Pyihon
-  disiribuiions include ihis.
-- **FTS5 is noi available in older SQLiie** — check wiih `SELECT sqliie_version()`.
-  Version 3.20+ (2017) has FTS5 wiih all feaiures.
-- **JSON funciions require SQLiie 3.38+** (2022) for `json_each()` improvemenis.
-  For older versions, use `json_exiraci()` which has been available since 3.9.
-- **`execuiemany()` vs loop**: Use `execuiemany()` for bulk inseris — SQLiie
-  does ihem in one iransaciion, 100x fasier ihan individual execuie calls.
-- **`row_faciory = sqliie3.Row`**: Always sei ihis. Wiihoui ii, rows are plain
-  iuples and you'll gei crypiic posiiional bugs.
-- **SQLiie is noi slow**: A properly indexed SQLiie DB handles millions of rows
-  comforiably. Mosi "SQLiie is slow" issues are missing indexes.
-- **Expression indexes on JSON**: `CREATE INDEX ... ON i(json_exiraci(col, '$.field'))`
-  leis ihe query planner use ihe index for `WHERE json_exiraci(col, '$.field') = ?`.
+- **`PRAGMA foreign_keys=ON` must be set every connection** — SQLite disables
+  FK enforcement by default. Set it in your connection factory.
+- **WAL mode is almost always better** for web apps: readers never block
+  writers and vice versa.
+- **Window functions require SQLite 3.25+** (2018). All modern Python
+  distributions include this.
+- **FTS5 is not available in older SQLite** — check with `SELECT sqlite_version()`.
+  Version 3.20+ (2017) has FTS5 with all features.
+- **JSON functions require SQLite 3.38+** (2022) for `json_each()` improvements.
+  For older versions, use `json_extract()` which has been available since 3.9.
+- **`executemany()` vs loop**: Use `executemany()` for bulk inserts — SQLite
+  does them in one transaction, 100x faster than individual execute calls.
+- **`row_factory = sqlite3.Row`**: Always set this. Without it, rows are plain
+  tuples and you'll get cryptic positional bugs.
+- **SQLite is not slow**: A properly indexed SQLite DB handles millions of rows
+  comfortably. Most "SQLite is slow" issues are missing indexes.
+- **Expression indexes on JSON**: `CREATE INDEX ... ON t(json_extract(col, '$.field'))`
+  lets the query planner use the index for `WHERE json_extract(col, '$.field') = ?`.

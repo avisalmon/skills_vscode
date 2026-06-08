@@ -9,72 +9,72 @@ description: >
   "docker image".
 ---
 
-i Docker Basics — Containers, Images & Compose
+# Docker Basics — Containers, Images & Compose
 
 > **Purpose**: Package, run, and ship applications using Docker containers.
 > Works on Windows (Docker Desktop), Linux, and macOS.
 
 ---
 
-ii Table of Contents
+## Table of Contents
 
-1. [Quick Reference](iquick-reference)
-2. [Core Concepts](icore-concepts)
-3. [Docker CLI Essentials](idocker-cli-essentials)
-4. [Writing Dockerfiles](iwriting-dockerfiles)
-5. [Docker Compose](idocker-compose)
-6. [Volumes & Persistence](ivolumes--persistence)
-7. [Networking](inetworking)
-8. [Environment Variables & Secrets](ienvironment-variables--secrets)
-9. [Common App Recipes](icommon-app-recipes)
-10. [Corporate Proxy Setup](iintel-proxy-setup)
-11. [Troubleshooting](itroubleshooting)
-12. [Lessons Learned](ilessons-learned)
+1. [Quick Reference](#quick-reference)
+2. [Core Concepts](#core-concepts)
+3. [Docker CLI Essentials](#docker-cli-essentials)
+4. [Writing Dockerfiles](#writing-dockerfiles)
+5. [Docker Compose](#docker-compose)
+6. [Volumes & Persistence](#volumes--persistence)
+7. [Networking](#networking)
+8. [Environment Variables & Secrets](#environment-variables--secrets)
+9. [Common App Recipes](#common-app-recipes)
+10. [Intel Proxy Setup](#intel-proxy-setup)
+11. [Troubleshooting](#troubleshooting)
+12. [Lessons Learned](#lessons-learned)
 
 ---
 
-ii Quick Reference
+## Quick Reference
 
 ```powershell
-i Run a container (download + start)
+# Run a container (download + start)
 docker run hello-world
-docker run -it ubuntu bash          i interactive terminal
-docker run -d -p 8080:80 nginx      i detached, port mapping
+docker run -it ubuntu bash          # interactive terminal
+docker run -d -p 8080:80 nginx      # detached, port mapping
 
-i Build an image from Dockerfile in current dir
+# Build an image from Dockerfile in current dir
 docker build -t myapp:latest .
 
-i List running containers
+# List running containers
 docker ps
-docker ps -a                        i including stopped
+docker ps -a                        # including stopped
 
-i Stop / remove
+# Stop / remove
 docker stop <container_id>
 docker rm <container_id>
 
-i List images
+# List images
 docker images
 
-i Remove image
+# Remove image
 docker rmi myapp:latest
 
-i Logs
+# Logs
 docker logs <container_id>
-docker logs -f <container_id>       i follow (like tail -f)
+docker logs -f <container_id>       # follow (like tail -f)
 
-i Exec into running container
+# Exec into running container
 docker exec -it <container_id> bash
 
-i Docker Compose
-docker compose up -d                i start all services, detached
-docker compose down                 i stop and remove containers
-docker compose logs -f              i follow all service logs
-docker compose ps                   i service status
+# Docker Compose
+docker compose up -d                # start all services, detached
+docker compose down                 # stop and remove containers
+docker compose logs -f              # follow all service logs
+docker compose ps                   # service status
 ```
 
 ---
 
-ii Core Concepts
+## Core Concepts
 
 | Term | Meaning |
 |------|---------|
@@ -88,22 +88,22 @@ ii Core Concepts
 
 ---
 
-ii Docker CLI Essentials
+## Docker CLI Essentials
 
-iii Pull & run images
+### Pull & run images
 ```bash
-docker pull python:3.12-slim          i download only
+docker pull python:3.12-slim          # download only
 docker run python:3.12-slim python --version
-docker run -it python:3.12-slim bash  i interactive shell
+docker run -it python:3.12-slim bash  # interactive shell
 ```
 
-iii Port mapping (`-p host:container`)
+### Port mapping (`-p host:container`)
 ```bash
 docker run -d -p 8080:80 nginx
-i now http://localhost:8080 → container port 80
+# now http://localhost:8080 → container port 80
 ```
 
-iii Named containers
+### Named containers
 ```bash
 docker run -d --name my-nginx -p 8080:80 nginx
 docker stop my-nginx
@@ -111,35 +111,35 @@ docker start my-nginx
 docker restart my-nginx
 ```
 
-iii Volume mount (`-v host_path:container_path`)
+### Volume mount (`-v host_path:container_path`)
 ```bash
 docker run -v C:\Projects\myapp:/app python:3.12-slim bash
 ```
 
-iii Environment variables
+### Environment variables
 ```bash
 docker run -e DEBUG=true -e PORT=8000 myapp:latest
 ```
 
-iii Inspect / stats
+### Inspect / stats
 ```bash
 docker inspect <container_id>
-docker stats                          i live CPU/RAM usage
-docker top <container_id>             i running processes
+docker stats                          # live CPU/RAM usage
+docker top <container_id>             # running processes
 ```
 
-iii Cleanup
+### Cleanup
 ```bash
-docker system prune                   i remove stopped containers + dangling images
-docker system prune -a                i also remove unused images (frees lots of space)
-docker volume prune                   i remove unused volumes
+docker system prune                   # remove stopped containers + dangling images
+docker system prune -a                # also remove unused images (frees lots of space)
+docker volume prune                   # remove unused volumes
 ```
 
 ---
 
-ii Writing Dockerfiles
+## Writing Dockerfiles
 
-iii Minimal Python app
+### Minimal Python app
 ```dockerfile
 FROM python:3.12-slim
 
@@ -154,42 +154,42 @@ EXPOSE 8000
 CMD ["python", "app.py"]
 ```
 
-iii Django app (production-ready)
+### Django app (production-ready)
 ```dockerfile
 FROM python:3.12-slim
 
-i System deps
+# System deps
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-i Install Python deps first (layer caching — only re-runs if requirements change)
+# Install Python deps first (layer caching — only re-runs if requirements change)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-i Copy app code
+# Copy app code
 COPY . .
 
-i Collect static files
+# Collect static files
 RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-i Run with gunicorn
+# Run with gunicorn
 CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]
 ```
 
-iii Multi-stage build (smaller final image)
+### Multi-stage build (smaller final image)
 ```dockerfile
-i Stage 1: Build
+# Stage 1: Build
 FROM python:3.12 AS builder
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-i Stage 2: Runtime (slim)
+# Stage 2: Runtime (slim)
 FROM python:3.12-slim
 WORKDIR /app
 COPY --from=builder /install /usr/local
@@ -197,7 +197,7 @@ COPY . .
 CMD ["python", "app.py"]
 ```
 
-iii Key Dockerfile rules
+### Key Dockerfile rules
 - **`COPY requirements.txt` before `COPY .`** — layer caching means pip only
   re-runs when requirements change, not on every code edit.
 - **Use slim base images** — `python:3.12-slim` is ~50MB vs `python:3.12` at ~1GB.
@@ -205,7 +205,7 @@ iii Key Dockerfile rules
 - **One `CMD`** — last CMD wins. Use `ENTRYPOINT` for fixed binary + `CMD` for default args.
 - **`.dockerignore`** — always add to skip `__pycache__`, `.git`, `*.pyc`, `env/`.
 
-iii .dockerignore template
+### .dockerignore template
 ```
 __pycache__/
 *.py[cod]
@@ -222,11 +222,11 @@ node_modules/
 
 ---
 
-ii Docker Compose
+## Docker Compose
 
 Define multi-service apps in one `docker-compose.yml`:
 
-iii Django + PostgreSQL + Redis
+### Django + PostgreSQL + Redis
 ```yaml
 services:
   web:
@@ -238,7 +238,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DEBUG=true
     volumes:
-      - .:/app               i live code reload in dev
+      - .:/app               # live code reload in dev
     depends_on:
       - db
       - redis
@@ -262,21 +262,21 @@ volumes:
   postgres_data:
 ```
 
-iii Compose commands
+### Compose commands
 ```bash
-docker compose up               i start (foreground, see logs)
-docker compose up -d            i start detached
-docker compose up --build       i rebuild images before starting
-docker compose down             i stop + remove containers/networks
-docker compose down -v          i also remove volumes
-docker compose restart web      i restart single service
-docker compose exec web bash    i shell into running service
-docker compose run web python manage.py migrate  i one-off command
-docker compose logs web -f      i follow logs for one service
-docker compose pull             i pull latest versions of all images
+docker compose up               # start (foreground, see logs)
+docker compose up -d            # start detached
+docker compose up --build       # rebuild images before starting
+docker compose down             # stop + remove containers/networks
+docker compose down -v          # also remove volumes
+docker compose restart web      # restart single service
+docker compose exec web bash    # shell into running service
+docker compose run web python manage.py migrate  # one-off command
+docker compose logs web -f      # follow logs for one service
+docker compose pull             # pull latest versions of all images
 ```
 
-iii Simple Nginx + static files
+### Simple Nginx + static files
 ```yaml
 services:
   nginx:
@@ -288,16 +288,16 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
 ```
 
-iii Override for development vs production
+### Override for development vs production
 ```yaml
-i docker-compose.yml (base)
+# docker-compose.yml (base)
 services:
   web:
     build: .
     environment:
       - SECRET_KEY=changeme
 
-i docker-compose.override.yml (auto-loaded in dev)
+# docker-compose.override.yml (auto-loaded in dev)
 services:
   web:
     volumes:
@@ -309,25 +309,25 @@ services:
 
 ---
 
-ii Volumes & Persistence
+## Volumes & Persistence
 
 ```bash
-i Named volume (Docker manages location)
+# Named volume (Docker manages location)
 docker run -v mydata:/data myapp
 
-i Bind mount (maps host folder into container)
+# Bind mount (maps host folder into container)
 docker run -v C:\Projects\data:/data myapp
 
-i Read-only bind mount
+# Read-only bind mount
 docker run -v C:\Projects\config:/config:ro myapp
 
-i List volumes
+# List volumes
 docker volume ls
 
-i Inspect volume
+# Inspect volume
 docker volume inspect mydata
 
-i Remove volume
+# Remove volume
 docker volume rm mydata
 ```
 
@@ -337,30 +337,30 @@ docker volume rm mydata
 
 ---
 
-ii Networking
+## Networking
 
 ```bash
-i List networks
+# List networks
 docker network ls
 
-i Create a custom network
+# Create a custom network
 docker network create mynet
 
-i Run container on custom network
+# Run container on custom network
 docker run -d --network mynet --name app1 myapp
 docker run -d --network mynet --name app2 myapp
-i app1 can reach app2 via http://app2:8000
+# app1 can reach app2 via http://app2:8000
 
-i Containers on the same Compose network auto-discover each other by service name
+# Containers on the same Compose network auto-discover each other by service name
 ```
 
 In Compose, all services are on the same default network automatically. Services
 reach each other by their **service name** as the hostname:
 ```python
-i In Django settings.py — connect to "db" service in Compose
+# In Django settings.py — connect to "db" service in Compose
 DATABASES = {
     "default": {
-        "HOST": "db",    i ← service name, not "localhost"
+        "HOST": "db",    # ← service name, not "localhost"
         "PORT": "5432",
     }
 }
@@ -368,17 +368,17 @@ DATABASES = {
 
 ---
 
-ii Environment Variables & Secrets
+## Environment Variables & Secrets
 
-iii `.env` file (auto-loaded by Compose)
+### `.env` file (auto-loaded by Compose)
 ```bash
-i .env
+# .env
 DEBUG=true
 SECRET_KEY=dev-only-key-change-in-production
 DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
 ```
 
-iii Reference in docker-compose.yml
+### Reference in docker-compose.yml
 ```yaml
 services:
   web:
@@ -386,29 +386,29 @@ services:
       - DEBUG=${DEBUG}
       - SECRET_KEY=${SECRET_KEY}
     env_file:
-      - .env          i load all vars from file
+      - .env          # load all vars from file
 ```
 
 > **Never commit `.env` to git.** Add it to `.gitignore`.
 
 ---
 
-ii Common App Recipes
+## Common App Recipes
 
-iii Run a one-off Django command
+### Run a one-off Django command
 ```bash
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser
 docker compose exec web python manage.py shell
 ```
 
-iii Copy file to/from container
+### Copy file to/from container
 ```bash
-docker cp mycontainer:/app/logs/error.log ./error.log    i container → host
-docker cp ./config.json mycontainer:/app/config.json     i host → container
+docker cp mycontainer:/app/logs/error.log ./error.log    # container → host
+docker cp ./config.json mycontainer:/app/config.json     # host → container
 ```
 
-iii Quick PostgreSQL with pgAdmin
+### Quick PostgreSQL with pgAdmin
 ```yaml
 services:
   db:
@@ -427,7 +427,7 @@ services:
       - "5050:80"
 ```
 
-iii Quick Redis + RedisInsight
+### Quick Redis + RedisInsight
 ```yaml
 services:
   redis:
@@ -443,69 +443,69 @@ services:
 
 ---
 
-ii Corporate Proxy Setup
+## Intel Proxy Setup
 
-Docker needs the proxy to pull images on a corporate network.
+Docker needs the proxy to pull images on Intel corporate network.
 
-iii Docker Desktop — GUI settings
+### Docker Desktop — GUI settings
 1. Open Docker Desktop → Settings → Resources → Proxies
-2. Set HTTP and HTTPS proxy to `http://proxy.example.com:8080`
+2. Set HTTP and HTTPS proxy to `http://proxy-iil.intel.com:912`
 3. Apply & Restart
 
-iii For builds (proxy inside Dockerfile)
+### For builds (proxy inside Dockerfile)
 ```dockerfile
-i Pass at build time
+# Pass at build time
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 RUN pip install ...
 ```
 ```bash
 docker build \
-  --build-arg HTTP_PROXY=http://proxy.example.com:8080 \
-  --build-arg HTTPS_PROXY=http://proxy.example.com:8080 \
+  --build-arg HTTP_PROXY=http://proxy-iil.intel.com:912 \
+  --build-arg HTTPS_PROXY=http://proxy-iil.intel.com:912 \
   -t myapp .
 ```
 
 ---
 
-ii Troubleshooting
+## Troubleshooting
 
-iii "port is already allocated"
+### "port is already allocated"
 ```bash
-i Find what's using the port
+# Find what's using the port
 netstat -ano | findstr :8000
-i Kill it, or change the host port mapping in docker-compose.yml
+# Kill it, or change the host port mapping in docker-compose.yml
 ```
 
-iii "Cannot connect to the Docker daemon"
+### "Cannot connect to the Docker daemon"
 ```powershell
-i Docker Desktop not running — start it
+# Docker Desktop not running — start it
 Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 ```
 
-iii Container exits immediately
+### Container exits immediately
 ```bash
-docker logs <container_id>      i check what error occurred
-docker run -it myapp bash       i run interactive to debug
+docker logs <container_id>      # check what error occurred
+docker run -it myapp bash       # run interactive to debug
 ```
 
-iii Build slow — not using cache
+### Build slow — not using cache
 - Ensure `COPY requirements.txt .` is before `COPY . .`
 - Don't change frequently-changing files early in the Dockerfile
 
-iii Volume data not persisting
+### Volume data not persisting
 - Named volumes persist across `docker compose down`
 - `docker compose down -v` **deletes volumes** — don't use `-v` if you want data
 
-iii "No space left on device"
+### "No space left on device"
 ```bash
-docker system prune -a          i remove all unused images, containers, networks
-docker volume prune             i remove unused volumes
+docker system prune -a          # remove all unused images, containers, networks
+docker volume prune             # remove unused volumes
 ```
 
 ---
 
-ii Lessons Learned
+## Lessons Learned
 
 - **Layer order matters**: Put slow-changing steps (`pip install`) before
   fast-changing ones (`COPY . .`) to maximize cache hits.
